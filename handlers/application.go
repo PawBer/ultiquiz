@@ -2,13 +2,20 @@ package handlers
 
 import (
 	"embed"
+	"log"
 	"net/http"
 
+	"github.com/PawBer/ultiquiz/models"
 	"github.com/julienschmidt/httprouter"
+	"go.mongodb.org/mongo-driver/mongo"
 )
 
 type Application struct {
-	PublicFS embed.FS
+	PublicFS       embed.FS
+	InfoLog        *log.Logger
+	ErrorLog       *log.Logger
+	MongoClient    *mongo.Client
+	QuizRepository *models.QuizMongoRepository
 }
 
 func (app *Application) RegisterHandlers() http.Handler {
@@ -17,5 +24,5 @@ func (app *Application) RegisterHandlers() http.Handler {
 	router.GET("/", GetIndex)
 	router.Handler("GET", "/public/*filename", app.GetPublic())
 
-	return router
+	return app.LogRequest(router)
 }

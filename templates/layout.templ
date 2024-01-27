@@ -13,7 +13,7 @@ templ Layout(title string) {
 	<!DOCTYPE html>
 	<html lang="en">
 		@head(title)
-		<body>
+		<body class="flex flex-col min-h-screen items-center" hx-boost="true">
 			<script src="https://unpkg.com/htmx.org@1.9.10"></script>
 			{ children... }
 		</body>
