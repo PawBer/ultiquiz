@@ -2,7 +2,6 @@ package models
 
 import (
 	"context"
-	"fmt"
 
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
@@ -24,7 +23,8 @@ type QuizDTO struct {
 }
 
 type QuizMongoRepository struct {
-	MongoClient *mongo.Client
+	MongoClient    *mongo.Client
+	UserRepository *UserMongoRepository
 }
 
 func (r QuizMongoRepository) Get(id string) (*Quiz, error) {
@@ -34,9 +34,8 @@ func (r QuizMongoRepository) Get(id string) (*Quiz, error) {
 	if err != nil {
 		return nil, err
 	}
-	err = r.MongoClient.Database("ultiquiz").Collection("quizzes").FindOne(context.Background(), bson.D{{"_id", objectId}}).Decode(&quiz)
+	err = r.MongoClient.Database("ultiquiz").Collection("quizzes").FindOne(context.TODO(), bson.D{{"_id", objectId}}).Decode(&quiz)
 	if err != nil {
-		fmt.Printf("Errored here")
 		return nil, err
 	}
 	decodedQuestions := []Question{}
@@ -44,10 +43,15 @@ func (r QuizMongoRepository) Get(id string) (*Quiz, error) {
 		decodedQuestions = append(decodedQuestions, question.Question)
 	}
 
+	creator, err := r.UserRepository.Get(quiz.CreatorId.Hex())
+	if err != nil {
+		return nil, err
+	}
+
 	decodedQuiz := &Quiz{
 		Id:        quiz.Id.Hex(),
 		Name:      quiz.Name,
-		Creator:   User{},
+		Creator:   *creator,
 		Questions: decodedQuestions,
 	}
 
@@ -70,7 +74,7 @@ func (r QuizMongoRepository) Add(quiz Quiz) (string, error) {
 		Questions: encodedQuestions,
 	}
 
-	result, err := r.MongoClient.Database("ultiquiz").Collection("quizzes").InsertOne(context.Background(), quizDTO)
+	result, err := r.MongoClient.Database("ultiquiz").Collection("quizzes").InsertOne(context.TODO(), quizDTO)
 	if err != nil {
 		return "", err
 	}

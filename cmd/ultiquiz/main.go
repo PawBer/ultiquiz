@@ -35,7 +35,11 @@ func main() {
 		InfoLog:        infoLog,
 		ErrorLog:       errorLog,
 		MongoClient:    client,
-		QuizRepository: &models.QuizMongoRepository{MongoClient: client},
+		UserRepository: &models.UserMongoRepository{MongoClient: client},
+		QuizRepository: &models.QuizMongoRepository{
+			MongoClient:    client,
+			UserRepository: &models.UserMongoRepository{MongoClient: client},
+		},
 	}
 
 	log.Printf("Started listening on :8080")

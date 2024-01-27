@@ -15,6 +15,7 @@ type Application struct {
 	InfoLog        *log.Logger
 	ErrorLog       *log.Logger
 	MongoClient    *mongo.Client
+	UserRepository *models.UserMongoRepository
 	QuizRepository *models.QuizMongoRepository
 }
 
