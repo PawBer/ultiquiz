@@ -1,0 +1,17 @@
+package partials
+
+import "strconv"
+import "github.com/PawBer/ultiquiz/models"
+
+templ MultipleChoiceView(questionIndex string, question models.MultipleChoiceQuestion, responseIndex int) {
+	<div class="flex flex-col w-full bg-gray-50 shadow p-4 gap-3">
+		<span class="text-xl mb-2">{ question.QuestionText }</span>
+		for index, selection := range question.Selections {
+			if responseIndex == index {
+				@RadioButton(questionIndex, string(selection), strconv.Itoa(index), true)
+			} else {
+				@RadioButton(questionIndex, string(selection), strconv.Itoa(index), false)
+			}
+		}
+	</div>
+}

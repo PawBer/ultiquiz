@@ -1,0 +1,8 @@
+package partials
+
+templ RadioButton(questionIndex, name, index string, selected bool) {
+	<label for={ "question" + questionIndex + "selection" + index } class="flex border border-gray-300 bg-white p-2 rounded">
+		<p>{ name }</p>
+		<input checked?={selected} class="btn-check to-disable ml-auto" type="radio" name="selection" id={ "question" + questionIndex + "selection" + index } value={ index }/>
+	</label>
+}

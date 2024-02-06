@@ -1,0 +1,31 @@
+package partials
+
+import "strconv"
+import "fmt"
+import "github.com/PawBer/ultiquiz/models"
+
+templ QuestionNavbar(quizId string, questionCount, currentQuestionIndex int, responses []models.UserQuizResponse, isOOB bool) {
+	<nav
+		id="question-navbar"
+		class="w-full font-medium text-sm border-b border-gray-300"
+		if isOOB {
+			{ templ.Attributes{"hx-swap-oob": "true"}... }
+		}
+	>
+		<ul class="flex">
+			for i := 0; i < questionCount; i++ {
+				<a
+					class={ "py-3 px-4", templ.KV("text-blue-500", responses[i] != nil), templ.KV("border-b-2 border-blue-400", currentQuestionIndex == i) }
+					href={ templ.URL(fmt.Sprintf("/quiz/%s/%d", quizId, i)) }
+					hx-get={ fmt.Sprintf("/quiz/%s/%d", quizId, i) }
+					hx-indicator="#spinner"
+					hx-select="#question-form"
+					hx-target="#question-form"
+					hx-swap="outerHTML swap:0.1s"
+					hx-push-url="true"
+					hx-disabled-elt=".to-disable"
+				>{ strconv.Itoa(i + 1) }</a>
+			}
+		</ul>
+	</nav>
+}

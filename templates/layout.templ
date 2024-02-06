@@ -12,8 +12,23 @@ templ head(title string) {
 templ Layout(title string) {
 	<!DOCTYPE html>
 	<html lang="en">
+		<style>
+		.fade-in.htmx-settling{
+    		opacity: 0;
+  		}
+
+		.fade-in {
+    		opacity: 1;
+    		transition: opacity 0.1s ease-out;
+  		}
+
+		.fade-out.htmx-swapping {
+    		opacity: 0;
+    		transition: opacity 0.1s ease-out;
+  		}
+		</style>
 		@head(title)
-		<body class="flex flex-col min-h-screen items-center" hx-boost="true">
+		<body class="flex flex-col h-full min-h-screen items-center" hx-boost="true">
 			<script src="https://unpkg.com/htmx.org@1.9.10"></script>
 			{ children... }
 		</body>

@@ -6,7 +6,11 @@ import (
 	"net/http"
 
 	"github.com/PawBer/ultiquiz/models"
-	"github.com/julienschmidt/httprouter"
+	"github.com/alexedwards/scs/v2"
+	"github.com/donseba/go-htmx"
+	"github.com/donseba/go-htmx/middleware"
+	"github.com/go-chi/chi/v5"
+	"github.com/go-playground/form/v4"
 	"go.mongodb.org/mongo-driver/mongo"
 )
 
@@ -17,13 +21,25 @@ type Application struct {
 	MongoClient    *mongo.Client
 	UserRepository *models.UserMongoRepository
 	QuizRepository *models.QuizMongoRepository
+	SessionManager *scs.SessionManager
+	FormDecoder    *form.Decoder
+	Htmx           *htmx.HTMX
 }
 
 func (app *Application) RegisterHandlers() http.Handler {
-	router := httprouter.New()
+	router := chi.NewRouter()
 
-	router.GET("/", GetIndex)
-	router.Handler("GET", "/public/*filename", app.GetPublic())
+	router.Use(app.SessionManager.LoadAndSave, middleware.MiddleWare, app.LogRequest)
 
-	return app.LogRequest(router)
+	router.Get("/", GetIndex)
+
+	router.Get("/quiz/{id}", app.GetQuiz)
+	router.Get("/quiz/{id}/{index}", app.GetQuizQuestion)
+	router.Post("/quiz/{id}/{index}", app.PostQuizQuestionResponse)
+	router.Post("/quiz/{id}/start", app.PostQuizStart)
+	router.Post("/quiz/{id}/stop", app.PostQuizStop)
+
+	router.Handle("/public/*", app.GetPublic())
+
+	return router
 }

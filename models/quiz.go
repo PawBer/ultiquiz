@@ -2,6 +2,7 @@ package models
 
 import (
 	"context"
+	"time"
 
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
@@ -12,6 +13,7 @@ type Quiz struct {
 	Id        string
 	Name      string
 	Creator   User
+	TimeLimit time.Duration
 	Questions []Question
 }
 
@@ -19,6 +21,7 @@ type QuizDTO struct {
 	Id        primitive.ObjectID `bson:"_id"`
 	Name      string
 	CreatorId primitive.ObjectID
+	TimeLimit time.Duration
 	Questions []QuestionDTO
 }
 
@@ -52,6 +55,7 @@ func (r QuizMongoRepository) Get(id string) (*Quiz, error) {
 		Id:        quiz.Id.Hex(),
 		Name:      quiz.Name,
 		Creator:   *creator,
+		TimeLimit: quiz.TimeLimit,
 		Questions: decodedQuestions,
 	}
 
@@ -71,6 +75,7 @@ func (r QuizMongoRepository) Add(quiz Quiz) (string, error) {
 		Id:        primitive.NewObjectID(),
 		Name:      quiz.Name,
 		CreatorId: quiz.Creator.Id,
+		TimeLimit: quiz.TimeLimit,
 		Questions: encodedQuestions,
 	}
 

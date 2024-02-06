@@ -4,12 +4,16 @@ go 1.21.6
 
 require (
 	github.com/a-h/templ v0.2.513
-	github.com/julienschmidt/httprouter v1.3.0
-	go.mongodb.org/mongo-driver v1.13.1
 	github.com/alexedwards/argon2id v1.0.0
+	github.com/alexedwards/scs/mongodbstore v0.0.0-20231113091146-cef4b05350c8
+	github.com/alexedwards/scs/v2 v2.7.0
+	github.com/go-chi/chi/v5 v5.0.11
+	github.com/go-playground/form/v4 v4.2.1
+	go.mongodb.org/mongo-driver v1.13.1
 )
 
 require (
+	github.com/donseba/go-htmx v1.6.0 // indirect
 	github.com/golang/snappy v0.0.1 // indirect
 	github.com/klauspost/compress v1.13.6 // indirect
 	github.com/montanaflynn/stats v0.0.0-20171201202039-1bf9dbcd8cbe // indirect

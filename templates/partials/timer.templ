@@ -1,0 +1,42 @@
+package partials
+
+import "time"
+
+script initTimer(date string, timeLimit int64) {
+    const timer = setInterval(() => {
+        const timerText = document.getElementById('timerText');
+        const timerProgress = document.getElementById('timerProgress');
+
+        const time = new Date(date) - new Date();
+        const timePercent = Math.floor(time / timeLimit * 100);
+        const minutes = Math.floor(time / (1000 * 60)).toString().padStart(2, 0);
+        let seconds = ((time % (1000 * 60)) / 1000).toFixed(0).padStart(2, 0);
+
+        if (seconds === '60') {
+            seconds = '59';
+        }
+
+        timerText.innerText = time > 0 ? `${minutes}:${seconds}` : "00:00";
+        timerProgress.style.width = timePercent > 0 ? `${timePercent}%` : `0%`;
+        
+        if (time < 0) {
+            clearInterval(timer);
+        }
+    })
+
+    document.body.addEventListener('htmx:beforeSend', (e) => {
+        if (e.detail.elt.id === "stop-quiz-form") {
+            clearInterval(timer);
+        }
+    })
+}
+
+templ Timer(endTime time.Time, timeLimit time.Duration) {
+	@initTimer(endTime.Format("2006-01-02T15:04:05Z07:00"), timeLimit.Milliseconds())
+	<div class="flex w-full items-center">
+		<div class="w-full mr-2 bg-gray-200 rounded-full h-2.5 dark:bg-gray-700">
+			<div id="timerProgress" class="bg-blue-600 h-2.5 rounded-full" style="width: 100%"></div>
+		</div>
+		<span class="min-w-12 text-center" id="timerText"></span>
+	</div>
+}

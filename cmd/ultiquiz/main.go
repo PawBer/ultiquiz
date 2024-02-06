@@ -3,12 +3,18 @@ package main
 import (
 	"context"
 	"embed"
+	"encoding/gob"
 	"log"
 	"net/http"
 	"os"
+	"time"
 
 	"github.com/PawBer/ultiquiz/handlers"
 	"github.com/PawBer/ultiquiz/models"
+	"github.com/alexedwards/scs/mongodbstore"
+	"github.com/alexedwards/scs/v2"
+	"github.com/donseba/go-htmx"
+	"github.com/go-playground/form/v4"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
 )
@@ -17,6 +23,11 @@ import (
 var public embed.FS
 
 func main() {
+	gob.Register(models.Quiz{})
+	gob.Register(models.UserQuizState{})
+	gob.Register(models.MultipleChoiceQuestion{})
+	gob.Register(models.MultipleChoiceResponse{})
+
 	infoLog := log.New(os.Stdout, "INFO: ", log.LstdFlags)
 	errorLog := log.New(os.Stderr, "ERROR: ", log.LstdFlags)
 
@@ -30,6 +41,11 @@ func main() {
 		}
 	}()
 
+	sessionManager := scs.New()
+	sessionManager.Lifetime = 24 * time.Hour
+	sessionManager.Cookie.Persist = true
+	sessionManager.Store = mongodbstore.New(client.Database("ultiquiz"))
+
 	app := handlers.Application{
 		PublicFS:       public,
 		InfoLog:        infoLog,
@@ -40,6 +56,9 @@ func main() {
 			MongoClient:    client,
 			UserRepository: &models.UserMongoRepository{MongoClient: client},
 		},
+		SessionManager: sessionManager,
+		FormDecoder:    form.NewDecoder(),
+		Htmx:           htmx.New(),
 	}
 
 	log.Printf("Started listening on :8080")
