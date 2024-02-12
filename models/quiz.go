@@ -71,10 +71,15 @@ func (r QuizMongoRepository) Add(quiz Quiz) (string, error) {
 		})
 	}
 
+	creatorId, err := primitive.ObjectIDFromHex(quiz.Creator.Id)
+	if err != nil {
+		return "", err
+	}
+
 	quizDTO := QuizDTO{
 		Id:        primitive.NewObjectID(),
 		Name:      quiz.Name,
-		CreatorId: quiz.Creator.Id,
+		CreatorId: creatorId,
 		TimeLimit: quiz.TimeLimit,
 		Questions: encodedQuestions,
 	}

@@ -24,6 +24,13 @@ func (r *UserExistsError) Error() string {
 }
 
 type User struct {
+	Id           string
+	Name         string
+	Email        string
+	PasswordHash string
+}
+
+type UserDTO struct {
 	Id           primitive.ObjectID `bson:"_id"`
 	Name         string
 	Email        string
@@ -35,7 +42,7 @@ type UserMongoRepository struct {
 }
 
 func (r *UserMongoRepository) Get(id string) (*User, error) {
-	var user User
+	var user UserDTO
 
 	objectId, err := primitive.ObjectIDFromHex(id)
 	if err != nil {
@@ -46,7 +53,12 @@ func (r *UserMongoRepository) Get(id string) (*User, error) {
 		return nil, err
 	}
 
-	return &user, nil
+	return &User{
+		Id:           user.Id.Hex(),
+		Name:         user.Name,
+		Email:        user.Email,
+		PasswordHash: user.PasswordHash,
+	}, nil
 }
 
 func (r *UserMongoRepository) Signup(email, username, password string) (string, error) {
@@ -65,7 +77,7 @@ func (r *UserMongoRepository) Signup(email, username, password string) (string, 
 		return "", err
 	}
 
-	user := &User{
+	user := &UserDTO{
 		Id:           primitive.NewObjectID(),
 		Name:         username,
 		Email:        email,
