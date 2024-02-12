@@ -34,8 +34,8 @@ func (app *Application) RegisterHandlers() http.Handler {
 	router.Get("/", GetIndex)
 
 	router.Get("/quiz/{id}", app.GetQuiz)
-	router.Get("/quiz/{id}/{index}", app.GetQuizQuestion)
-	router.Post("/quiz/{id}/{index}", app.PostQuizQuestionResponse)
+	router.Post("/quiz/{id}", app.PostQuizQuestionResponse)
+	router.Post("/quiz/{id}/{index}", app.PostQuizQuestionIndex)
 	router.Post("/quiz/{id}/start", app.PostQuizStart)
 	router.Post("/quiz/{id}/stop", app.PostQuizStop)
 

@@ -14,17 +14,19 @@ templ QuestionNavbar(quizId string, questionCount, currentQuestionIndex int, res
 	>
 		<ul class="flex">
 			for i := 0; i < questionCount; i++ {
-				<a
-					class={ "py-3 px-4", templ.KV("text-blue-500", responses[i] != nil), templ.KV("border-b-2 border-blue-400", currentQuestionIndex == i) }
-					href={ templ.URL(fmt.Sprintf("/quiz/%s/%d", quizId, i)) }
-					hx-get={ fmt.Sprintf("/quiz/%s/%d", quizId, i) }
+				<form
+					action={ templ.URL(fmt.Sprintf("/quiz/%s/%d", quizId, i)) }
+					hx-post={ fmt.Sprintf("/quiz/%s/%d", quizId, i) }
 					hx-indicator="#spinner"
 					hx-select="#question-form"
 					hx-target="#question-form"
 					hx-swap="outerHTML swap:0.1s"
-					hx-push-url="true"
 					hx-disabled-elt=".to-disable"
-				>{ strconv.Itoa(i + 1) }</a>
+				>
+					<button class={ "py-3 px-4", templ.KV("text-blue-500", responses[i] != nil), templ.KV("border-b-2 border-blue-400", currentQuestionIndex == i) }>
+						{ strconv.Itoa(i + 1) }
+					</button>
+				</form>
 			}
 		</ul>
 	</nav>

@@ -24,12 +24,11 @@ templ QuizNavigationButton(quiz models.Quiz, index int, visibleName, value strin
 	<button
 		name="direction"
 		value={ value }
-		hx-post={ fmt.Sprintf("/quiz/%s/%d", quiz.Id, index) }
+		hx-post={ fmt.Sprintf("/quiz/%s", quiz.Id) }
 		hx-indicator="#spinner"
 		hx-select="#question-form"
 		hx-target="#question-form"
 		hx-swap="outerHTML swap:0.1s"
-		hx-push-url="true"
 		hx-disabled-elt=".to-disable"
 		class="to-disable flex-1 text-white bg-blue-500 hover:bg-blue-600 px-4 py-2 rounded"
 	>
@@ -51,7 +50,7 @@ templ QuizQuestionForm(quiz models.Quiz, index int, question models.Question, re
 		<form
 			id="question"
 			method="post"
-			hx-post={ fmt.Sprintf("/quiz/%s/%d", quiz.Id, index) }
+			hx-post={ fmt.Sprintf("/quiz/%s", quiz.Id) }
 			hx-target="#submit-form"
 			hx-select="#submit-form"
 			hx-swap="outerHTML"

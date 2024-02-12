@@ -25,8 +25,46 @@ func (app *Application) GetQuiz(w http.ResponseWriter, r *http.Request) {
 
 	if app.SessionManager.GetBool(r.Context(), "userInQuiz") {
 		userQuizState := app.SessionManager.Get(r.Context(), "userQuizState").(models.UserQuizState)
-		redirectUrl := fmt.Sprintf("/quiz/%s/%d", userQuizState.CurrentQuiz.Id, userQuizState.CurrentIndex)
-		http.Redirect(w, r, redirectUrl, http.StatusSeeOther)
+
+		quiz, err := app.QuizRepository.Get(quizId)
+		if err != nil {
+			if errors.Is(err, primitive.ErrInvalidHex) || errors.Is(err, mongo.ErrNoDocuments) {
+				app.notFound(w)
+				return
+			}
+
+			app.serverError(w, err)
+			return
+		}
+
+		canSubmit := true
+		for _, response := range userQuizState.Responses {
+			if response == nil {
+				canSubmit = false
+				break
+			}
+		}
+
+		htmx := app.Htmx.NewHandler(w, r)
+		if htmx.IsHxRequest() && !htmx.IsHxBoosted() {
+			w.Header().Set("Cache-Control", "no-store, must-revalidate")
+			req := htmx.Request()
+			if req.HxTarget == "submit-form" {
+				component := pages.SubmitButton(*quiz, canSubmit)
+				component.Render(r.Context(), w)
+
+				component = partials.QuestionNavbar(quizId, len(quiz.Questions), userQuizState.CurrentIndex, userQuizState.Responses, true)
+				component.Render(r.Context(), w)
+				return
+			}
+
+			component := pages.QuizQuestionForm(*quiz, userQuizState.CurrentIndex, quiz.Questions[userQuizState.CurrentIndex], userQuizState.Responses, canSubmit)
+			component.Render(r.Context(), w)
+			return
+		}
+
+		component := pages.QuizQuestion(*quiz, userQuizState.StartTime, userQuizState.CurrentIndex, quiz.Questions[userQuizState.CurrentIndex], userQuizState.Responses, canSubmit)
+		component.Render(r.Context(), w)
 		return
 	}
 
@@ -69,7 +107,7 @@ func (app *Application) PostQuizStart(w http.ResponseWriter, r *http.Request) {
 	app.SessionManager.Put(r.Context(), "userQuizState", userQuizState)
 	app.SessionManager.Put(r.Context(), "userInQuiz", true)
 
-	redirectUrl := fmt.Sprintf("/quiz/%s/0", quizId)
+	redirectUrl := fmt.Sprintf("/quiz/%s", quizId)
 	http.Redirect(w, r, redirectUrl, http.StatusSeeOther)
 }
 
@@ -87,7 +125,7 @@ func (app *Application) PostQuizStop(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, "/", http.StatusSeeOther)
 }
 
-func (app *Application) GetQuizQuestion(w http.ResponseWriter, r *http.Request) {
+func (app *Application) PostQuizQuestionIndex(w http.ResponseWriter, r *http.Request) {
 	quizId := chi.URLParam(r, "id")
 	questionIndex, err := strconv.Atoi(chi.URLParam(r, "index"))
 	if err != nil {
@@ -105,44 +143,8 @@ func (app *Application) GetQuizQuestion(w http.ResponseWriter, r *http.Request) 
 	userQuizState.CurrentIndex = questionIndex
 	app.SessionManager.Put(r.Context(), "userQuizState", userQuizState)
 
-	quiz, err := app.QuizRepository.Get(quizId)
-	if err != nil {
-		if errors.Is(err, primitive.ErrInvalidHex) || errors.Is(err, mongo.ErrNoDocuments) {
-			app.notFound(w)
-			return
-		}
-
-		app.serverError(w, err)
-		return
-	}
-
-	canSubmit := true
-	for _, response := range userQuizState.Responses {
-		if response == nil {
-			canSubmit = false
-			break
-		}
-	}
-
-	htmx := app.Htmx.NewHandler(w, r)
-	if htmx.IsHxRequest() && !htmx.IsHxBoosted() {
-		req := htmx.Request()
-		if req.HxTarget == "submit-form" {
-			component := pages.SubmitButton(*quiz, canSubmit)
-			component.Render(r.Context(), w)
-
-			component = partials.QuestionNavbar(quizId, len(quiz.Questions), userQuizState.CurrentIndex, userQuizState.Responses, true)
-			component.Render(r.Context(), w)
-			return
-		}
-
-		component := pages.QuizQuestionForm(*quiz, questionIndex, quiz.Questions[questionIndex], userQuizState.Responses, canSubmit)
-		component.Render(r.Context(), w)
-		return
-	}
-
-	component := pages.QuizQuestion(*quiz, userQuizState.StartTime, questionIndex, quiz.Questions[questionIndex], userQuizState.Responses, canSubmit)
-	component.Render(r.Context(), w)
+	redirectUrl := fmt.Sprintf("/quiz/%s", userQuizState.CurrentQuiz.Id)
+	http.Redirect(w, r, redirectUrl, http.StatusSeeOther)
 }
 
 func (app *Application) PostQuizQuestionResponse(w http.ResponseWriter, r *http.Request) {
@@ -159,18 +161,13 @@ func (app *Application) PostQuizQuestionResponse(w http.ResponseWriter, r *http.
 	app.FormDecoder.Decode(&formModel, r.Form)
 
 	quizId := chi.URLParam(r, "id")
-	questionIndex, err := strconv.Atoi(chi.URLParam(r, "index"))
-	if err != nil {
-		app.clientError(w, http.StatusBadRequest)
-		return
-	}
 
 	if !app.SessionManager.GetBool(r.Context(), "userInQuiz") {
 		app.clientError(w, http.StatusBadRequest)
 		return
 	}
 	userQuizState := app.SessionManager.Get(r.Context(), "userQuizState").(models.UserQuizState)
-	if userQuizState.CurrentQuiz.Id != quizId || userQuizState.CurrentIndex != questionIndex {
+	if userQuizState.CurrentQuiz.Id != quizId {
 		app.clientError(w, 400)
 		return
 	}
@@ -201,6 +198,6 @@ func (app *Application) PostQuizQuestionResponse(w http.ResponseWriter, r *http.
 
 	app.SessionManager.Put(r.Context(), "userQuizState", userQuizState)
 
-	redirectUrl := fmt.Sprintf("/quiz/%s/%d", userQuizState.CurrentQuiz.Id, userQuizState.CurrentIndex)
+	redirectUrl := fmt.Sprintf("/quiz/%s", userQuizState.CurrentQuiz.Id)
 	http.Redirect(w, r, redirectUrl, http.StatusSeeOther)
 }
