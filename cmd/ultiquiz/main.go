@@ -56,6 +56,10 @@ func main() {
 			MongoClient:    client,
 			UserRepository: &models.UserMongoRepository{MongoClient: client},
 		},
+		UserQuizResultRepository: &models.UserQuizResultRepository{
+			MongoClient:    client,
+			UserRepository: &models.UserMongoRepository{MongoClient: client},
+		},
 		SessionManager: sessionManager,
 		FormDecoder:    form.NewDecoder(),
 		Htmx:           htmx.New(),

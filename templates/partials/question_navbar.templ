@@ -4,7 +4,7 @@ import "strconv"
 import "fmt"
 import "github.com/PawBer/ultiquiz/models"
 
-templ QuestionNavbar(quizId string, questionCount, currentQuestionIndex int, responses []models.UserQuizResponse, isOOB bool) {
+templ QuestionNavbar(quizId string, questionCount, currentQuestionIndex int, responses []models.QuizResponse, isOOB bool) {
 	<nav
 		id="question-navbar"
 		class="w-full font-medium text-sm border-b border-gray-300"

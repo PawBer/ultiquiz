@@ -15,15 +15,16 @@ import (
 )
 
 type Application struct {
-	PublicFS       embed.FS
-	InfoLog        *log.Logger
-	ErrorLog       *log.Logger
-	MongoClient    *mongo.Client
-	UserRepository *models.UserMongoRepository
-	QuizRepository *models.QuizMongoRepository
-	SessionManager *scs.SessionManager
-	FormDecoder    *form.Decoder
-	Htmx           *htmx.HTMX
+	PublicFS                 embed.FS
+	InfoLog                  *log.Logger
+	ErrorLog                 *log.Logger
+	MongoClient              *mongo.Client
+	UserRepository           *models.UserMongoRepository
+	QuizRepository           *models.QuizMongoRepository
+	UserQuizResultRepository *models.UserQuizResultRepository
+	SessionManager           *scs.SessionManager
+	FormDecoder              *form.Decoder
+	Htmx                     *htmx.HTMX
 }
 
 func (app *Application) RegisterHandlers() http.Handler {
@@ -38,6 +39,7 @@ func (app *Application) RegisterHandlers() http.Handler {
 	router.Post("/quiz/{id}/{index}", app.PostQuizQuestionIndex)
 	router.Post("/quiz/{id}/start", app.PostQuizStart)
 	router.Post("/quiz/{id}/stop", app.PostQuizStop)
+	router.Post("/quiz/{id}/finish", app.PostQuizFinish)
 
 	router.Handle("/public/*", app.GetPublic())
 

@@ -49,8 +49,8 @@ func (app *Application) GetQuiz(w http.ResponseWriter, r *http.Request) {
 		if htmx.IsHxRequest() && !htmx.IsHxBoosted() {
 			w.Header().Set("Cache-Control", "no-store, must-revalidate")
 			req := htmx.Request()
-			if req.HxTarget == "submit-form" {
-				component := pages.SubmitButton(*quiz, canSubmit)
+			if req.HxTarget == "finish-form" {
+				component := pages.FinishButton(*quiz, canSubmit)
 				component.Render(r.Context(), w)
 
 				component = partials.QuestionNavbar(quizId, len(quiz.Questions), userQuizState.CurrentIndex, userQuizState.Responses, true)
@@ -101,7 +101,7 @@ func (app *Application) PostQuizStart(w http.ResponseWriter, r *http.Request) {
 		CurrentQuiz:  *quiz,
 		CurrentIndex: 0,
 		StartTime:    time.Now().UTC(),
-		Responses:    make([]models.UserQuizResponse, len(quiz.Questions)),
+		Responses:    make([]models.QuizResponse, len(quiz.Questions)),
 	}
 
 	app.SessionManager.Put(r.Context(), "userQuizState", userQuizState)
@@ -200,4 +200,45 @@ func (app *Application) PostQuizQuestionResponse(w http.ResponseWriter, r *http.
 
 	redirectUrl := fmt.Sprintf("/quiz/%s", userQuizState.CurrentQuiz.Id)
 	http.Redirect(w, r, redirectUrl, http.StatusSeeOther)
+}
+
+func (app *Application) PostQuizFinish(w http.ResponseWriter, r *http.Request) {
+	quizId := chi.URLParam(r, "id")
+
+	if !app.SessionManager.GetBool(r.Context(), "userInQuiz") {
+		app.clientError(w, http.StatusBadRequest)
+		return
+	}
+
+	userQuizState := app.SessionManager.Get(r.Context(), "userQuizState").(models.UserQuizState)
+	if userQuizState.CurrentQuiz.Id != quizId {
+		app.clientError(w, http.StatusBadRequest)
+		return
+	}
+
+	// for _, response := range userQuizState.Responses {
+	// 	if response == nil {
+	// 		fmt.Printf("nil\n")
+	// 	} else {
+	// 		fmt.Printf("%s\n", response.GetResponseType())
+	// 	}
+	// }
+
+	userQuizResult := models.UserQuizResult{
+		Id: userQuizState.CurrentQuiz.Id,
+		User: models.User{
+			Id: "65b5289625bd5e5a989df7a7",
+		},
+		Responses: userQuizState.Responses,
+		StartTime: userQuizState.StartTime,
+	}
+	id, err := app.UserQuizResultRepository.Add(userQuizResult)
+	if err != nil {
+		app.serverError(w, err)
+		return
+	}
+	fmt.Printf("%s", id)
+	app.SessionManager.Remove(r.Context(), "userQuizState")
+	app.SessionManager.Put(r.Context(), "userInQuiz", false)
+	http.Redirect(w, r, "/", http.StatusSeeOther)
 }

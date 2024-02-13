@@ -36,23 +36,23 @@ templ QuizNavigationButton(quiz models.Quiz, index int, visibleName, value strin
 	</button>
 }
 
-templ SubmitButton(quiz models.Quiz, canSubmit bool) {
-	<form id="submit-form" class="w-full" action={ templ.URL(fmt.Sprintf("/quiz/%s/submit", quiz.Id)) } method="post">
-		if canSubmit {
-			<button class="to-disable w-full text-white bg-blue-500 hover:bg-blue-600 px-4 py-2 rounded">Submit</button>
+templ FinishButton(quiz models.Quiz, canFinish bool) {
+	<form id="finish-form" class="w-full" action={ templ.URL(fmt.Sprintf("/quiz/%s/finish", quiz.Id)) } method="post">
+		if canFinish {
+			<button class="to-disable w-full text-white bg-blue-500 hover:bg-blue-600 px-4 py-2 rounded">Finish Quiz</button>
 		}
 	</form>
 }
 
-templ QuizQuestionForm(quiz models.Quiz, index int, question models.Question, responses []models.UserQuizResponse, canSubmit bool) {
+templ QuizQuestionForm(quiz models.Quiz, index int, question models.Question, responses []models.QuizResponse, canFinish bool) {
 	<div id="question-form" class="relative flex flex-col w-full fade-in fade-out gap-2">
 		@partials.QuestionNavbar(quiz.Id, len(quiz.Questions), index, responses, false)
 		<form
 			id="question"
 			method="post"
 			hx-post={ fmt.Sprintf("/quiz/%s", quiz.Id) }
-			hx-target="#submit-form"
-			hx-select="#submit-form"
+			hx-target="#finish-form"
+			hx-select="#finish-form"
 			hx-swap="outerHTML"
 			hx-disabled-elt=".to-disable"
 			hx-indicator="#spinner"
@@ -72,7 +72,7 @@ templ QuizQuestionForm(quiz models.Quiz, index int, question models.Question, re
 				@QuizNavigationButton(quiz, index, "Next", "next")
 			</div>
 		</form>
-		@SubmitButton(quiz, canSubmit)
+		@FinishButton(quiz, canFinish)
 		<form id="stop-quiz-form" class="self-start" action={ templ.URL(fmt.Sprintf("/quiz/%s/stop", quiz.Id)) } method="post">
 			<button class="w-full text-red-500">Stop Quiz</button>
 		</form>
@@ -86,7 +86,7 @@ templ QuizQuestionForm(quiz models.Quiz, index int, question models.Question, re
 	</div>
 }
 
-templ QuizQuestion(quiz models.Quiz, startTime time.Time, index int, question models.Question, responses []models.UserQuizResponse, canSubmit bool) {
+templ QuizQuestion(quiz models.Quiz, startTime time.Time, index int, question models.Question, responses []models.QuizResponse, canSubmit bool) {
 	@templates.Layout(fmt.Sprintf("%s - Question %d", quiz.Name, index + 1)) {
 		<div class="flex-1 flex flex-col w-full max-w-[90vw] md:max-w-[70vw] lg:max-w-[60vw] xl:max-w-[50vw] 2xl:max-w-[40vw] h-full items-center justify-center">
 			@partials.Timer(startTime.Add(quiz.TimeLimit), quiz.TimeLimit)
