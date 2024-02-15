@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"database/sql"
 	"embed"
 	"log"
 	"net/http"
@@ -11,16 +12,15 @@ import (
 	"github.com/donseba/go-htmx/middleware"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-playground/form/v4"
-	"go.mongodb.org/mongo-driver/mongo"
 )
 
 type Application struct {
 	PublicFS                 embed.FS
 	InfoLog                  *log.Logger
 	ErrorLog                 *log.Logger
-	MongoClient              *mongo.Client
-	UserRepository           *models.UserMongoRepository
-	QuizRepository           *models.QuizMongoRepository
+	Db                       *sql.DB
+	UserRepository           *models.UserRepository
+	QuizRepository           *models.QuizRepository
 	UserQuizResultRepository *models.UserQuizResultRepository
 	SessionManager           *scs.SessionManager
 	FormDecoder              *form.Decoder

@@ -1,93 +1,162 @@
 package models
 
 import (
-	"context"
+	"database/sql"
 	"time"
 
-	"go.mongodb.org/mongo-driver/bson"
-	"go.mongodb.org/mongo-driver/bson/primitive"
-	"go.mongodb.org/mongo-driver/mongo"
+	"github.com/doug-martin/goqu/v9"
 )
 
 type Quiz struct {
-	Id        string
+	Id        int
 	Name      string
 	Creator   User
 	TimeLimit time.Duration
 	Questions []Question
 }
 
-type QuizDTO struct {
-	Id        primitive.ObjectID `bson:"_id"`
-	Name      string
-	CreatorId primitive.ObjectID
-	TimeLimit time.Duration
-	Questions []QuestionDTO
+type QuizRepository struct {
+	Db             *sql.DB
+	UserRepository *UserRepository
 }
 
-type QuizMongoRepository struct {
-	MongoClient    *mongo.Client
-	UserRepository *UserMongoRepository
-}
+func (r QuizRepository) Get(id int) (*Quiz, error) {
+	var quiz Quiz
 
-func (r QuizMongoRepository) Get(id string) (*Quiz, error) {
-	var quiz QuizDTO
+	query := goqu.Dialect("postgres").From("quizzes").Prepared(true).Select("*").Where(goqu.Ex{
+		"id": id,
+	})
+	sql, params, _ := query.ToSQL()
+	row := r.Db.QueryRow(sql, params...)
+	err := row.Scan(&quiz.Id, &quiz.Name, &quiz.Creator.Id, &quiz.TimeLimit)
+	if err != nil {
+		return nil, row.Err()
+	}
 
-	objectId, err := primitive.ObjectIDFromHex(id)
+	user, err := r.UserRepository.Get(quiz.Creator.Id)
 	if err != nil {
 		return nil, err
 	}
-	err = r.MongoClient.Database("ultiquiz").Collection("quizzes").FindOne(context.TODO(), bson.D{{"_id", objectId}}).Decode(&quiz)
+	quiz.Creator = *user
+
+	query = goqu.From("questions").Select("id", "question_type").Where(goqu.Ex{
+		"quiz_id": quiz.Id,
+	}).Order(goqu.I("sequence_number").Asc())
+	sql, params, _ = query.ToSQL()
+	rows, err := r.Db.Query(sql, params...)
 	if err != nil {
 		return nil, err
 	}
-	decodedQuestions := []Question{}
-	for _, question := range quiz.Questions {
-		decodedQuestions = append(decodedQuestions, question.Question)
+	for rows.Next() {
+		var questionId int
+		var questionType string
+
+		err = rows.Scan(&questionId, &questionType)
+		if err != nil {
+			return nil, err
+		}
+		switch questionType {
+		case MultipleChoice:
+			var multipleChoiceQuestionId int
+			var multipleChoiceQuestion MultipleChoiceQuestion
+
+			query = goqu.From("multiple_choice_questions").Select("id", "question_text", "correct_answer_index").Where(goqu.Ex{
+				"question_id": questionId,
+			})
+			sql, params, _ = query.ToSQL()
+			row = r.Db.QueryRow(sql, params...)
+			err = row.Scan(&multipleChoiceQuestionId, &multipleChoiceQuestion.QuestionText, &multipleChoiceQuestion.CorrectSelectionIndex)
+			if err != nil {
+				return nil, err
+			}
+
+			query = goqu.From("multiple_choice_options").Select("selection_text").Where(goqu.Ex{
+				"question_id": multipleChoiceQuestionId,
+			}).Order(goqu.I("sequence_number").Asc())
+			sql, params, _ = query.ToSQL()
+			rows, err := r.Db.Query(sql, params...)
+			if err != nil {
+				return nil, err
+			}
+
+			var selection string
+			for rows.Next() {
+				err = rows.Scan(&selection)
+				if err != nil {
+					return nil, err
+				}
+				multipleChoiceQuestion.Selections = append(multipleChoiceQuestion.Selections, MultipleChoiceSelection(selection))
+			}
+
+			quiz.Questions = append(quiz.Questions, multipleChoiceQuestion)
+		}
 	}
 
-	creator, err := r.UserRepository.Get(quiz.CreatorId.Hex())
-	if err != nil {
-		return nil, err
-	}
-
-	decodedQuiz := &Quiz{
-		Id:        quiz.Id.Hex(),
-		Name:      quiz.Name,
-		Creator:   *creator,
-		TimeLimit: quiz.TimeLimit,
-		Questions: decodedQuestions,
-	}
-
-	return decodedQuiz, nil
+	return &quiz, nil
 }
 
-func (r QuizMongoRepository) Add(quiz Quiz) (string, error) {
-	encodedQuestions := []QuestionDTO{}
-	for _, question := range quiz.Questions {
-		encodedQuestions = append(encodedQuestions, QuestionDTO{
-			Type:     question.GetQuestionType(),
-			Question: question,
-		})
-	}
-
-	creatorId, err := primitive.ObjectIDFromHex(quiz.Creator.Id)
+func (r QuizRepository) Add(quiz Quiz) (int, error) {
+	var insertId int
+	tx, err := r.Db.Begin()
 	if err != nil {
-		return "", err
+		tx.Rollback()
+		return 0, err
 	}
 
-	quizDTO := QuizDTO{
-		Id:        primitive.NewObjectID(),
-		Name:      quiz.Name,
-		CreatorId: creatorId,
-		TimeLimit: quiz.TimeLimit,
-		Questions: encodedQuestions,
-	}
-
-	result, err := r.MongoClient.Database("ultiquiz").Collection("quizzes").InsertOne(context.TODO(), quizDTO)
+	query := goqu.Dialect("postgres").Insert("quizzes").Prepared(true).Rows(
+		goqu.Record{"name": quiz.Name, "creator_id": quiz.Creator.Id, "time_limit": quiz.TimeLimit},
+	)
+	sql, params, _ := query.ToSQL()
+	err = tx.QueryRow(sql+" RETURNING id", params...).Scan(&insertId)
 	if err != nil {
-		return "", err
+		tx.Rollback()
+		return 0, err
 	}
 
-	return result.InsertedID.(primitive.ObjectID).Hex(), nil
+	for index, question := range quiz.Questions {
+		var questionId int
+		var multipleChoiceQuestionId int
+		query := goqu.Insert("questions").Rows(
+			goqu.Record{"quiz_id": insertId, "question_type": question.GetQuestionType(), "sequence_number": index},
+		)
+		sql, params, _ := query.ToSQL()
+		err = tx.QueryRow(sql+" RETURNING id", params...).Scan(&questionId)
+		if err != nil {
+			tx.Rollback()
+			return 0, err
+		}
+		switch question.GetQuestionType() {
+		case MultipleChoice:
+			var multipleChoiceQuestion MultipleChoiceQuestion = question.(MultipleChoiceQuestion)
+			query := goqu.Dialect("postgres").Insert("multiple_choice_questions").Prepared(true).Rows(
+				goqu.Record{"question_id": questionId, "question_text": multipleChoiceQuestion.QuestionText, "correct_answer_index": multipleChoiceQuestion.CorrectSelectionIndex},
+			)
+			sql, params, _ := query.ToSQL()
+			err = tx.QueryRow(sql+" RETURNING id", params...).Scan(&multipleChoiceQuestionId)
+			if err != nil {
+				tx.Rollback()
+				return 0, err
+			}
+
+			for index, option := range multipleChoiceQuestion.Selections {
+				query := goqu.Dialect("postgres").Insert("multiple_choice_options").Prepared(true).Rows(
+					goqu.Record{"question_id": multipleChoiceQuestionId, "sequence_number": index, "selection_text": string(option)},
+				)
+				sql, params, _ := query.ToSQL()
+				_, err = tx.Exec(sql, params...)
+				if err != nil {
+					tx.Rollback()
+					return 0, err
+				}
+			}
+		}
+	}
+
+	err = tx.Commit()
+	if err != nil {
+		tx.Rollback()
+		return 0, err
+	}
+
+	return insertId, nil
 }

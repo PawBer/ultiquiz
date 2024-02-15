@@ -1,7 +1,6 @@
 package handlers
 
 import (
-	"errors"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -11,8 +10,6 @@ import (
 	"github.com/PawBer/ultiquiz/templates/pages"
 	"github.com/PawBer/ultiquiz/templates/partials"
 	"github.com/go-chi/chi/v5"
-	"go.mongodb.org/mongo-driver/bson/primitive"
-	"go.mongodb.org/mongo-driver/mongo"
 )
 
 const (
@@ -21,17 +18,21 @@ const (
 )
 
 func (app *Application) GetQuiz(w http.ResponseWriter, r *http.Request) {
-	quizId := chi.URLParam(r, "id")
+	quizId, err := strconv.Atoi(chi.URLParam(r, "id"))
+	if err != nil {
+		app.clientError(w, 400)
+		return
+	}
 
 	if app.SessionManager.GetBool(r.Context(), "userInQuiz") {
 		userQuizState := app.SessionManager.Get(r.Context(), "userQuizState").(models.UserQuizState)
 
 		quiz, err := app.QuizRepository.Get(quizId)
 		if err != nil {
-			if errors.Is(err, primitive.ErrInvalidHex) || errors.Is(err, mongo.ErrNoDocuments) {
-				app.notFound(w)
-				return
-			}
+			// if errors.Is(err, primitive.ErrInvalidHex) || errors.Is(err, mongo.ErrNoDocuments) {
+			// 	app.notFound(w)
+			// 	return
+			// }
 
 			app.serverError(w, err)
 			return
@@ -70,10 +71,10 @@ func (app *Application) GetQuiz(w http.ResponseWriter, r *http.Request) {
 
 	quiz, err := app.QuizRepository.Get(quizId)
 	if err != nil {
-		if errors.Is(err, primitive.ErrInvalidHex) || errors.Is(err, mongo.ErrNoDocuments) {
-			app.notFound(w)
-			return
-		}
+		// if errors.Is(err, primitive.ErrInvalidHex) || errors.Is(err, mongo.ErrNoDocuments) {
+		// 	app.notFound(w)
+		// 	return
+		// }
 
 		app.serverError(w, err)
 		return
@@ -84,14 +85,18 @@ func (app *Application) GetQuiz(w http.ResponseWriter, r *http.Request) {
 }
 
 func (app *Application) PostQuizStart(w http.ResponseWriter, r *http.Request) {
-	quizId := chi.URLParam(r, "id")
+	quizId, err := strconv.Atoi(chi.URLParam(r, "id"))
+	if err != nil {
+		app.clientError(w, 400)
+		return
+	}
 
 	quiz, err := app.QuizRepository.Get(quizId)
 	if err != nil {
-		if errors.Is(err, primitive.ErrInvalidHex) || errors.Is(err, mongo.ErrNoDocuments) {
-			app.notFound(w)
-			return
-		}
+		// if errors.Is(err, primitive.ErrInvalidHex) || errors.Is(err, mongo.ErrNoDocuments) {
+		// 	app.notFound(w)
+		// 	return
+		// }
 
 		app.serverError(w, err)
 		return
@@ -107,12 +112,16 @@ func (app *Application) PostQuizStart(w http.ResponseWriter, r *http.Request) {
 	app.SessionManager.Put(r.Context(), "userQuizState", userQuizState)
 	app.SessionManager.Put(r.Context(), "userInQuiz", true)
 
-	redirectUrl := fmt.Sprintf("/quiz/%s", quizId)
+	redirectUrl := fmt.Sprintf("/quiz/%d", quizId)
 	http.Redirect(w, r, redirectUrl, http.StatusSeeOther)
 }
 
 func (app *Application) PostQuizStop(w http.ResponseWriter, r *http.Request) {
-	quizId := chi.URLParam(r, "id")
+	quizId, err := strconv.Atoi(chi.URLParam(r, "id"))
+	if err != nil {
+		app.clientError(w, 400)
+		return
+	}
 
 	userQuizState := app.SessionManager.Get(r.Context(), "userQuizState").(models.UserQuizState)
 	if userQuizState.CurrentQuiz.Id != quizId {
@@ -126,7 +135,11 @@ func (app *Application) PostQuizStop(w http.ResponseWriter, r *http.Request) {
 }
 
 func (app *Application) PostQuizQuestionIndex(w http.ResponseWriter, r *http.Request) {
-	quizId := chi.URLParam(r, "id")
+	quizId, err := strconv.Atoi(chi.URLParam(r, "id"))
+	if err != nil {
+		app.clientError(w, 400)
+		return
+	}
 	questionIndex, err := strconv.Atoi(chi.URLParam(r, "index"))
 	if err != nil {
 		app.clientError(w, 400)
@@ -134,7 +147,7 @@ func (app *Application) PostQuizQuestionIndex(w http.ResponseWriter, r *http.Req
 	}
 
 	if !app.SessionManager.GetBool(r.Context(), "userInQuiz") {
-		redirectUrl := fmt.Sprintf("/quiz/%s", quizId)
+		redirectUrl := fmt.Sprintf("/quiz/%d", quizId)
 		http.Redirect(w, r, redirectUrl, http.StatusSeeOther)
 		return
 	}
@@ -143,7 +156,7 @@ func (app *Application) PostQuizQuestionIndex(w http.ResponseWriter, r *http.Req
 	userQuizState.CurrentIndex = questionIndex
 	app.SessionManager.Put(r.Context(), "userQuizState", userQuizState)
 
-	redirectUrl := fmt.Sprintf("/quiz/%s", userQuizState.CurrentQuiz.Id)
+	redirectUrl := fmt.Sprintf("/quiz/%d", userQuizState.CurrentQuiz.Id)
 	http.Redirect(w, r, redirectUrl, http.StatusSeeOther)
 }
 
@@ -160,7 +173,11 @@ func (app *Application) PostQuizQuestionResponse(w http.ResponseWriter, r *http.
 	}
 	app.FormDecoder.Decode(&formModel, r.Form)
 
-	quizId := chi.URLParam(r, "id")
+	quizId, err := strconv.Atoi(chi.URLParam(r, "id"))
+	if err != nil {
+		app.clientError(w, 400)
+		return
+	}
 
 	if !app.SessionManager.GetBool(r.Context(), "userInQuiz") {
 		app.clientError(w, http.StatusBadRequest)
@@ -198,12 +215,16 @@ func (app *Application) PostQuizQuestionResponse(w http.ResponseWriter, r *http.
 
 	app.SessionManager.Put(r.Context(), "userQuizState", userQuizState)
 
-	redirectUrl := fmt.Sprintf("/quiz/%s", userQuizState.CurrentQuiz.Id)
+	redirectUrl := fmt.Sprintf("/quiz/%d", userQuizState.CurrentQuiz.Id)
 	http.Redirect(w, r, redirectUrl, http.StatusSeeOther)
 }
 
 func (app *Application) PostQuizFinish(w http.ResponseWriter, r *http.Request) {
-	quizId := chi.URLParam(r, "id")
+	quizId, err := strconv.Atoi(chi.URLParam(r, "id"))
+	if err != nil {
+		app.clientError(w, 400)
+		return
+	}
 
 	if !app.SessionManager.GetBool(r.Context(), "userInQuiz") {
 		app.clientError(w, http.StatusBadRequest)
@@ -226,8 +247,11 @@ func (app *Application) PostQuizFinish(w http.ResponseWriter, r *http.Request) {
 
 	userQuizResult := models.UserQuizResult{
 		Id: userQuizState.CurrentQuiz.Id,
+		Quiz: models.Quiz{
+			Id: userQuizState.CurrentQuiz.Id,
+		},
 		User: models.User{
-			Id: "65b5289625bd5e5a989df7a7",
+			Id: 1,
 		},
 		Responses: userQuizState.Responses,
 		StartTime: userQuizState.StartTime,
@@ -237,7 +261,7 @@ func (app *Application) PostQuizFinish(w http.ResponseWriter, r *http.Request) {
 		app.serverError(w, err)
 		return
 	}
-	fmt.Printf("%s", id)
+	fmt.Printf("%d", id)
 	app.SessionManager.Remove(r.Context(), "userQuizState")
 	app.SessionManager.Put(r.Context(), "userInQuiz", false)
 	http.Redirect(w, r, "/", http.StatusSeeOther)

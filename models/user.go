@@ -1,12 +1,10 @@
 package models
 
 import (
-	"context"
+	"database/sql"
 
 	"github.com/alexedwards/argon2id"
-	"go.mongodb.org/mongo-driver/bson"
-	"go.mongodb.org/mongo-driver/bson/primitive"
-	"go.mongodb.org/mongo-driver/mongo"
+	"github.com/doug-martin/goqu/v9"
 )
 
 var argonParams = &argon2id.Params{
@@ -24,72 +22,51 @@ func (r *UserExistsError) Error() string {
 }
 
 type User struct {
-	Id           string
+	Id           int
 	Name         string
 	Email        string
 	PasswordHash string
 }
 
-type UserDTO struct {
-	Id           primitive.ObjectID `bson:"_id"`
-	Name         string
-	Email        string
-	PasswordHash string
+type UserRepository struct {
+	Db *sql.DB
 }
 
-type UserMongoRepository struct {
-	MongoClient *mongo.Client
-}
+func (r *UserRepository) Get(id int) (*User, error) {
+	var user User
 
-func (r *UserMongoRepository) Get(id string) (*User, error) {
-	var user UserDTO
-
-	objectId, err := primitive.ObjectIDFromHex(id)
-	if err != nil {
-		return nil, err
-	}
-	err = r.MongoClient.Database("ultiquiz").Collection("users").FindOne(context.TODO(), bson.D{{"_id", objectId}}).Decode(&user)
+	query := goqu.From("users").Select("*").Where(goqu.Ex{
+		"id": id,
+	})
+	sql, params, _ := query.ToSQL()
+	err := r.Db.QueryRow(sql, params...).Scan(&user.Id, &user.Name, &user.Email, &user.PasswordHash)
 	if err != nil {
 		return nil, err
 	}
 
-	return &User{
-		Id:           user.Id.Hex(),
-		Name:         user.Name,
-		Email:        user.Email,
-		PasswordHash: user.PasswordHash,
-	}, nil
+	return &user, nil
 }
 
-func (r *UserMongoRepository) Signup(email, username, password string) (string, error) {
-	err := r.MongoClient.Database("ultiquiz").Collection("users").FindOne(context.TODO(), bson.D{{"email", email}}).Err()
-	// Other error
-	if err != nil && err != mongo.ErrNoDocuments {
-		return "", err
-	}
-	// User exists
-	if err == nil {
-		return "", &UserExistsError{}
-	}
+func (r *UserRepository) Signup(email, username, password string) (int, error) {
+	var userId int
 
 	passwordHash, err := argon2id.CreateHash(password, argonParams)
 	if err != nil {
-		return "", err
+		return 0, err
 	}
 
-	user := &UserDTO{
-		Id:           primitive.NewObjectID(),
-		Name:         username,
-		Email:        email,
-		PasswordHash: passwordHash,
-	}
-
-	result, err := r.MongoClient.Database("ultiquiz").Collection("users").InsertOne(context.TODO(), user)
+	query := goqu.Dialect("postgres").Insert("users").Prepared(true).Rows(goqu.Record{
+		"name":          username,
+		"email":         email,
+		"password_hash": passwordHash,
+	})
+	sql, params, _ := query.ToSQL()
+	err = r.Db.QueryRow(sql, params...).Scan(&userId)
 	if err != nil {
-		return "", err
+		return 0, err
 	}
 
-	return result.InsertedID.(primitive.ObjectID).Hex(), nil
+	return userId, nil
 }
 
 func (r *User) Login(password string) (bool, error) {

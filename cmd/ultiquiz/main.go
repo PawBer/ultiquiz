@@ -1,9 +1,10 @@
 package main
 
 import (
-	"context"
+	"database/sql"
 	"embed"
 	"encoding/gob"
+	"fmt"
 	"log"
 	"net/http"
 	"os"
@@ -11,12 +12,13 @@ import (
 
 	"github.com/PawBer/ultiquiz/handlers"
 	"github.com/PawBer/ultiquiz/models"
-	"github.com/alexedwards/scs/mongodbstore"
+	"github.com/alexedwards/scs/postgresstore"
 	"github.com/alexedwards/scs/v2"
 	"github.com/donseba/go-htmx"
 	"github.com/go-playground/form/v4"
-	"go.mongodb.org/mongo-driver/mongo"
-	"go.mongodb.org/mongo-driver/mongo/options"
+
+	_ "github.com/doug-martin/goqu/v9/dialect/postgres"
+	_ "github.com/lib/pq"
 )
 
 //go:embed public
@@ -31,12 +33,16 @@ func main() {
 	infoLog := log.New(os.Stdout, "INFO: ", log.LstdFlags)
 	errorLog := log.New(os.Stderr, "ERROR: ", log.LstdFlags)
 
-	client, err := mongo.Connect(context.TODO(), options.Client().ApplyURI(os.Getenv("MONGO_CONN_STR")))
+	db, err := sql.Open("postgres", os.Getenv("PGSQL_CONN_STR"))
+	if err != nil {
+		panic(err)
+	}
+	err = db.Ping()
 	if err != nil {
 		panic(err)
 	}
 	defer func() {
-		if err := client.Disconnect(context.TODO()); err != nil {
+		if err := db.Close(); err != nil {
 			panic(err)
 		}
 	}()
@@ -44,26 +50,37 @@ func main() {
 	sessionManager := scs.New()
 	sessionManager.Lifetime = 24 * time.Hour
 	sessionManager.Cookie.Persist = true
-	sessionManager.Store = mongodbstore.New(client.Database("ultiquiz"))
+	sessionManager.Store = postgresstore.New(db)
 
 	app := handlers.Application{
 		PublicFS:       public,
 		InfoLog:        infoLog,
 		ErrorLog:       errorLog,
-		MongoClient:    client,
-		UserRepository: &models.UserMongoRepository{MongoClient: client},
-		QuizRepository: &models.QuizMongoRepository{
-			MongoClient:    client,
-			UserRepository: &models.UserMongoRepository{MongoClient: client},
+		Db:             db,
+		UserRepository: &models.UserRepository{Db: db},
+		QuizRepository: &models.QuizRepository{
+			Db:             db,
+			UserRepository: &models.UserRepository{Db: db},
 		},
 		UserQuizResultRepository: &models.UserQuizResultRepository{
-			MongoClient:    client,
-			UserRepository: &models.UserMongoRepository{MongoClient: client},
+			Db:             db,
+			UserRepository: &models.UserRepository{Db: db},
+			QuizRepository: &models.QuizRepository{
+				Db:             db,
+				UserRepository: &models.UserRepository{Db: db},
+			},
 		},
 		SessionManager: sessionManager,
 		FormDecoder:    form.NewDecoder(),
 		Htmx:           htmx.New(),
 	}
+
+	quiz, err := app.UserQuizResultRepository.Get(1, 1)
+	if err != nil {
+		log.Fatalf("%s", err.Error())
+		return
+	}
+	fmt.Printf("%v\n", quiz)
 
 	log.Printf("Started listening on :8080")
 	log.Fatal(http.ListenAndServe(":8080", app.RegisterHandlers()))

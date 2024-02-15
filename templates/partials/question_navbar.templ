@@ -4,7 +4,7 @@ import "strconv"
 import "fmt"
 import "github.com/PawBer/ultiquiz/models"
 
-templ QuestionNavbar(quizId string, questionCount, currentQuestionIndex int, responses []models.QuizResponse, isOOB bool) {
+templ QuestionNavbar(quizId int, questionCount, currentQuestionIndex int, responses []models.QuizResponse, isOOB bool) {
 	<nav
 		id="question-navbar"
 		class="w-full font-medium text-sm border-b border-gray-300"
@@ -15,8 +15,8 @@ templ QuestionNavbar(quizId string, questionCount, currentQuestionIndex int, res
 		<ul class="flex">
 			for i := 0; i < questionCount; i++ {
 				<form
-					action={ templ.URL(fmt.Sprintf("/quiz/%s/%d", quizId, i)) }
-					hx-post={ fmt.Sprintf("/quiz/%s/%d", quizId, i) }
+					action={ templ.URL(fmt.Sprintf("/quiz/%d/%d", quizId, i)) }
+					hx-post={ fmt.Sprintf("/quiz/%d/%d", quizId, i) }
 					hx-indicator="#spinner"
 					hx-select="#question-form"
 					hx-target="#question-form"
