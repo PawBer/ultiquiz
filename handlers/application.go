@@ -34,12 +34,14 @@ func (app *Application) RegisterHandlers() http.Handler {
 
 	router.Get("/", GetIndex)
 
-	router.Get("/quiz/{id}", app.GetQuiz)
-	router.Post("/quiz/{id}", app.PostQuizQuestionResponse)
-	router.Post("/quiz/{id}/{index}", app.PostQuizQuestionIndex)
-	router.Post("/quiz/{id}/start", app.PostQuizStart)
-	router.Post("/quiz/{id}/stop", app.PostQuizStop)
-	router.Post("/quiz/{id}/finish", app.PostQuizFinish)
+	router.Get("/quizzes/{id}", app.GetQuiz)
+	router.Post("/quizzes/{id}", app.PostQuizQuestionResponse)
+	router.Post("/quizzes/{id}/{index}", app.PostQuizQuestionIndex)
+	router.Post("/quizzes/{id}/start", app.PostQuizStart)
+	router.Post("/quizzes/{id}/stop", app.PostQuizStop)
+	router.Post("/quizzes/{id}/finish", app.PostQuizFinish)
+
+	router.Get("/results/list", app.GetResults)
 
 	router.Handle("/public/*", app.GetPublic())
 

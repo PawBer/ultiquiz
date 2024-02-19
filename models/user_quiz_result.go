@@ -8,20 +8,13 @@ import (
 )
 
 type UserQuizResult struct {
-	Id        int
-	User      User
-	Quiz      Quiz
-	Responses []QuizResponse
-	StartTime time.Time
-	EndTime   time.Time
-}
-
-type UserQuizResultDTO struct {
-	Id        int
-	UserId    int
-	Responses []QuizResponseDTO
-	StartTime time.Time
-	EndTime   time.Time
+	Id              int
+	User            User
+	ParticipantName string
+	Quiz            Quiz
+	Responses       []QuizResponse
+	StartTime       time.Time
+	EndTime         time.Time
 }
 
 type UserQuizResultRepository struct {
@@ -30,75 +23,203 @@ type UserQuizResultRepository struct {
 	QuizRepository *QuizRepository
 }
 
-func (r UserQuizResultRepository) Get(quizId, userId int) ([]UserQuizResult, error) {
-	var quizResults []UserQuizResult
+func (r UserQuizResultRepository) Get(resultId int) (*UserQuizResult, error) {
+	query := goqu.Dialect("postgres").From(goqu.T("quiz_results").As("qr")).Prepared(true).Select(
+		goqu.I("qr.id"),
+		goqu.I("qr.quiz_id"),
+		goqu.I("qr.start_time"),
+		goqu.I("qr.end_time"),
+		goqu.I("qr.participant_name"),
+		goqu.I("u.id"),
+		goqu.I("u.name"),
+		goqu.I("u.email"),
+		goqu.I("u.password_hash"),
+		goqu.I("s.response_type"),
+		goqu.I("s.sequence_number"),
+		goqu.I("mcs.index"),
+	).Where(goqu.Ex{
+		"qr.id": resultId,
+	}).Join(
+		goqu.T("users").As("u"), goqu.On(goqu.Ex{"qr.user_id": goqu.I("u.id")}),
+	).Join(
+		goqu.T("selections").As("s"), goqu.On(goqu.Ex{"qr.id": goqu.I("s.result_id")}),
+	).LeftJoin(
+		goqu.T("multiple_choice_selections").As("mcs"), goqu.On(goqu.Ex{"s.id": goqu.I("mcs.selection_id"), "s.response_type": MultipleChoice}),
+	).Order(
+		goqu.I("qr.id").Desc(),
+		goqu.I("s.sequence_number").Asc(),
+		goqu.I("mcs.id").Asc(),
+	)
 
-	user, err := r.UserRepository.Get(userId)
-	if err != nil {
-		return nil, err
-	}
-	quiz, err := r.QuizRepository.Get(quizId)
+	stmt, params, _ := query.ToSQL()
+	rows, err := r.Db.Query(stmt, params...)
 	if err != nil {
 		return nil, err
 	}
 
-	query := goqu.Dialect("postgres").From("quiz_results").Select("id", "start_time", "end_time").Prepared(true).Where(goqu.Ex{
-		"user_id": userId,
-		"quiz_id": quizId,
-	})
-	sql, params, _ := query.ToSQL()
-	rows, err := r.Db.Query(sql, params...)
-	if err != nil {
-		return nil, err
-	}
+	var user User
+	var result UserQuizResult
+
 	for rows.Next() {
-		var resultId int
-		var quizResult UserQuizResult
+		var (
+			resultId                  int
+			quizId                    int
+			startTime, endTime        time.Time
+			participantName           string
+			userId                    int
+			name, email, passwordHash string
+			responseType              string
+			sequence_number           int
+			mcsIndex                  int
+		)
 
-		quizResult.User = *user
-		quizResult.Quiz = *quiz
-
-		err := rows.Scan(&resultId, &quizResult.StartTime, &quizResult.EndTime)
+		err := rows.Scan(&resultId, &quizId, &startTime, &endTime, &participantName, &userId, &name, &email, &passwordHash, &responseType, &sequence_number, &mcsIndex)
 		if err != nil {
 			return nil, err
 		}
 
-		query := goqu.From("selections").Select("id", "response_type").Where(goqu.Ex{
-			"result_id": resultId,
-		}).Order(goqu.I("sequence_number").Asc())
-		sql, params, _ := query.ToSQL()
-		rows, err := r.Db.Query(sql, params...)
-		if err != nil {
-			return nil, err
-		}
-		for rows.Next() {
-			var selectionId int
-			var responseType string
-
-			err := rows.Scan(&selectionId, &responseType)
-			if err != nil {
-				return nil, err
+		if user.Id == 0 {
+			user = User{
+				Id:           userId,
+				Name:         name,
+				Email:        email,
+				PasswordHash: passwordHash,
 			}
+		}
+		if result.Id == 0 {
+			result = UserQuizResult{
+				Id:              resultId,
+				User:            user,
+				ParticipantName: participantName,
+				Quiz:            Quiz{Id: quizId},
+				Responses:       []QuizResponse{},
+				StartTime:       startTime,
+				EndTime:         endTime,
+			}
+		}
 
-			switch responseType {
-			case MultipleChoice:
-				var selectionIndex int
+		switch responseType {
+		case MultipleChoice:
+			multipleChoiceResponse := MultipleChoiceResponse{
+				SelectionIndex: mcsIndex,
+			}
+			result.Responses = append(result.Responses, multipleChoiceResponse)
+		}
+	}
 
-				query := goqu.From("multiple_choice_selections").Select("index").Where(goqu.Ex{
-					"selection_id": selectionId,
-				})
-				sql, params, _ := query.ToSQL()
-				row := r.Db.QueryRow(sql, params...)
-				err := row.Scan(&selectionIndex)
-				if err != nil {
-					return nil, err
+	return &result, nil
+}
+
+func (r UserQuizResultRepository) GetLatestByUserAndQuiz(quizId, userId, limit, offset int) ([]UserQuizResult, error) {
+	whereConditions := goqu.Ex{}
+	if userId != 0 {
+		whereConditions["qr.quiz_id"] = userId
+	}
+	if quizId != 0 {
+		whereConditions["qr.user_id"] = userId
+	}
+
+	query := goqu.Dialect("postgres").From(goqu.T("quiz_results").As("qr")).Prepared(true).Select(
+		goqu.I("qr.id"),
+		goqu.I("qr.start_time"),
+		goqu.I("qr.end_time"),
+		goqu.I("qr.participant_name"),
+		goqu.I("u.id"),
+		goqu.I("u.name"),
+		goqu.I("u.email"),
+		goqu.I("u.password_hash"),
+		goqu.I("s.response_type"),
+		goqu.I("s.sequence_number"),
+		goqu.I("mcs.index"),
+	).Where(
+		whereConditions,
+	).LeftJoin(
+		goqu.T("users").As("u"), goqu.On(goqu.Ex{"qr.user_id": goqu.I("u.id")}),
+	).Join(
+		goqu.T("selections").As("s"), goqu.On(goqu.Ex{"qr.id": goqu.I("s.result_id")}),
+	).LeftJoin(
+		goqu.T("multiple_choice_selections").As("mcs"), goqu.On(goqu.Ex{"s.id": goqu.I("mcs.selection_id"), "s.response_type": MultipleChoice}),
+	).Order(
+		goqu.I("qr.id").Desc(),
+		goqu.I("s.sequence_number").Asc(),
+		goqu.I("mcs.id").Asc(),
+	).Limit(uint(limit)).Offset(uint(offset))
+
+	stmt, params, _ := query.ToSQL()
+	rows, err := r.Db.Query(stmt, params...)
+	if err != nil {
+		return nil, err
+	}
+
+	var user User
+	quizResults := []UserQuizResult{}
+
+	for rows.Next() {
+		var (
+			resultId                  int
+			startTime, endTime        time.Time
+			participantName           string
+			userId                    sql.NullInt32
+			name, email, passwordHash sql.NullString
+			responseType              string
+			sequence_number           int
+			mcsIndex                  int
+		)
+
+		err := rows.Scan(&resultId, &startTime, &endTime, &participantName, &userId, &name, &email, &passwordHash, &responseType, &sequence_number, &mcsIndex)
+		if err != nil {
+			return nil, err
+		}
+
+		if user.Id == 0 {
+			if userId.Valid {
+				user = User{
+					Id:           int(userId.Int32),
+					Name:         name.String,
+					Email:        email.String,
+					PasswordHash: passwordHash.String,
 				}
-				quizResult.Responses = append(quizResult.Responses, MultipleChoiceResponse{
-					SelectionIndex: selectionIndex,
-				})
+			} else {
+				user = User{}
 			}
 		}
-		quizResults = append(quizResults, quizResult)
+
+		resultExists := false
+		var resultIndex int
+		for index, result := range quizResults {
+			if result.Id == resultId {
+				resultExists = true
+				resultIndex = index
+				break
+			}
+		}
+
+		var result UserQuizResult
+		if !resultExists {
+			result = UserQuizResult{
+				Id:              resultId,
+				User:            user,
+				ParticipantName: participantName,
+				Quiz:            Quiz{Id: quizId},
+				Responses:       []QuizResponse{},
+				StartTime:       startTime,
+				EndTime:         endTime,
+			}
+			quizResults = append(quizResults, result)
+			resultIndex = len(quizResults) - 1
+		} else {
+			result = quizResults[resultIndex]
+		}
+
+		switch responseType {
+		case MultipleChoice:
+			multipleChoiceResponse := MultipleChoiceResponse{
+				SelectionIndex: mcsIndex,
+			}
+			result.Responses = append(result.Responses, multipleChoiceResponse)
+		}
+
+		quizResults[resultIndex] = result
 	}
 
 	return quizResults, nil
@@ -113,14 +234,21 @@ func (r UserQuizResultRepository) Add(result UserQuizResult) (int, error) {
 		return 0, err
 	}
 
-	query := goqu.Insert("quiz_results").Rows(goqu.Record{
-		"user_id":    result.User.Id,
-		"quiz_id":    result.Quiz.Id,
-		"start_time": result.StartTime,
-		"end_time":   result.EndTime,
-	})
-	sql, params, _ := query.ToSQL()
-	err = tx.QueryRow(sql+" RETURNING id", params...).Scan(&quizResultId)
+	record := goqu.Record{
+		"quiz_id":          result.Quiz.Id,
+		"start_time":       result.StartTime,
+		"end_time":         result.EndTime,
+		"participant_name": result.ParticipantName,
+	}
+	if result.User.Id > 0 {
+		record["user_id"] = result.User.Id
+	} else {
+		record["user_id"] = nil
+	}
+
+	query := goqu.Insert("quiz_results").Rows(record)
+	stmt, params, _ := query.ToSQL()
+	err = tx.QueryRow(stmt+" RETURNING id", params...).Scan(&quizResultId)
 	if err != nil {
 		tx.Rollback()
 		return 0, err
@@ -134,8 +262,8 @@ func (r UserQuizResultRepository) Add(result UserQuizResult) (int, error) {
 			"response_type":   selection.GetResponseType(),
 			"sequence_number": index,
 		})
-		sql, params, _ := query.ToSQL()
-		err := tx.QueryRow(sql+" RETURNING id", params...).Scan(&selectionId)
+		stmt, params, _ := query.ToSQL()
+		err := tx.QueryRow(stmt+" RETURNING id", params...).Scan(&selectionId)
 		if err != nil {
 			tx.Rollback()
 			return 0, err
@@ -148,8 +276,8 @@ func (r UserQuizResultRepository) Add(result UserQuizResult) (int, error) {
 				"selection_id": selectionId,
 				"index":        multipleChoiceSelection.SelectionIndex,
 			})
-			sql, params, _ := query.ToSQL()
-			_, err := tx.Exec(sql, params...)
+			stmt, params, _ := query.ToSQL()
+			_, err := tx.Exec(stmt, params...)
 			if err != nil {
 				tx.Rollback()
 				return 0, err

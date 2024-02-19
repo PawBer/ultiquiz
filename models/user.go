@@ -38,8 +38,8 @@ func (r *UserRepository) Get(id int) (*User, error) {
 	query := goqu.From("users").Select("*").Where(goqu.Ex{
 		"id": id,
 	})
-	sql, params, _ := query.ToSQL()
-	err := r.Db.QueryRow(sql, params...).Scan(&user.Id, &user.Name, &user.Email, &user.PasswordHash)
+	stmt, params, _ := query.ToSQL()
+	err := r.Db.QueryRow(stmt, params...).Scan(&user.Id, &user.Name, &user.Email, &user.PasswordHash)
 	if err != nil {
 		return nil, err
 	}
@@ -49,19 +49,32 @@ func (r *UserRepository) Get(id int) (*User, error) {
 
 func (r *UserRepository) Signup(email, username, password string) (int, error) {
 	var userId int
+	var count int
+
+	selectQuery := goqu.Dialect("postgres").From("users").Prepared(true).Select(goqu.COUNT("*")).Where(goqu.Ex{
+		"email": email,
+	})
+	stmt, params, _ := selectQuery.ToSQL()
+	err := r.Db.QueryRow(stmt, params...).Scan(&count)
+	if err != nil {
+		return 0, err
+	}
+	if count > 0 {
+		return 0, &UserExistsError{}
+	}
 
 	passwordHash, err := argon2id.CreateHash(password, argonParams)
 	if err != nil {
 		return 0, err
 	}
 
-	query := goqu.Dialect("postgres").Insert("users").Prepared(true).Rows(goqu.Record{
+	insertQuery := goqu.Dialect("postgres").Insert("users").Prepared(true).Rows(goqu.Record{
 		"name":          username,
 		"email":         email,
 		"password_hash": passwordHash,
 	})
-	sql, params, _ := query.ToSQL()
-	err = r.Db.QueryRow(sql, params...).Scan(&userId)
+	stmt, params, _ = insertQuery.ToSQL()
+	err = r.Db.QueryRow(stmt, params...).Scan(&userId)
 	if err != nil {
 		return 0, err
 	}
@@ -69,7 +82,19 @@ func (r *UserRepository) Signup(email, username, password string) (int, error) {
 	return userId, nil
 }
 
-func (r *User) Login(password string) (bool, error) {
-	authorized, _, err := argon2id.CheckHash(password, r.PasswordHash)
+func (r *UserRepository) Login(email, password string) (bool, error) {
+	var passwordHash string
+
+	query := goqu.Dialect("postgres").From("users").Select("passwordHash").Prepared(true).Where(goqu.Ex{
+		"email": email,
+	})
+
+	stmt, params, _ := query.ToSQL()
+	err := r.Db.QueryRow(stmt, params...).Scan(&passwordHash)
+	if err != nil {
+		return false, err
+	}
+
+	authorized, _, err := argon2id.CheckHash(password, passwordHash)
 	return authorized, err
 }

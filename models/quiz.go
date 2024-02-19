@@ -8,11 +8,12 @@ import (
 )
 
 type Quiz struct {
-	Id        int
-	Name      string
-	Creator   User
-	TimeLimit time.Duration
-	Questions []Question
+	Id           int
+	Name         string
+	Creator      User
+	CreationDate time.Time
+	TimeLimit    time.Duration
+	Questions    []Question
 }
 
 type QuizRepository struct {
@@ -21,78 +22,216 @@ type QuizRepository struct {
 }
 
 func (r QuizRepository) Get(id int) (*Quiz, error) {
+	query := goqu.Dialect("postgres").From(goqu.T("quizzes").As("q")).Prepared(true).Select(
+		goqu.I("q.id"),
+		goqu.I("q.name"),
+		goqu.I("q.creation_date"),
+		goqu.I("u.id"),
+		goqu.I("u.name"),
+		goqu.I("u.email"),
+		goqu.I("u.password_hash"),
+		goqu.I("q.time_limit"),
+		goqu.I("qs.question_type"),
+		goqu.I("qs.sequence_number"),
+		goqu.I("mcq.question_text"),
+		goqu.I("mcq.correct_answer_index"),
+		goqu.I("mco.selection_text"),
+	).Where(goqu.Ex{
+		"q.id": id,
+	}).Join(
+		goqu.T("users").As("u"), goqu.On(goqu.Ex{"q.creator_id": goqu.I("u.id")}),
+	).Join(
+		goqu.T("questions").As("qs"), goqu.On(goqu.Ex{"q.id": goqu.I("qs.quiz_id")}),
+	).LeftJoin(
+		goqu.T("multiple_choice_questions").As("mcq"), goqu.On(goqu.Ex{"qs.id": goqu.I("mcq.question_id"), "qs.question_type": MultipleChoice}),
+	).LeftJoin(
+		goqu.T("multiple_choice_options").As("mco"), goqu.On(goqu.Ex{"mcq.id": goqu.I("mco.question_id")}),
+	).Order(
+		goqu.I("qs.sequence_number").Asc(),
+		goqu.I("mcq.id").Asc(),
+		goqu.I("mco.sequence_number").Asc(),
+	)
+	stmt, params, _ := query.ToSQL()
+	rows, err := r.Db.Query(stmt, params...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
 	var quiz Quiz
+	var creator User
+	questions := []Question{}
 
-	query := goqu.Dialect("postgres").From("quizzes").Prepared(true).Select("*").Where(goqu.Ex{
-		"id": id,
-	})
-	sql, params, _ := query.ToSQL()
-	row := r.Db.QueryRow(sql, params...)
-	err := row.Scan(&quiz.Id, &quiz.Name, &quiz.Creator.Id, &quiz.TimeLimit)
-	if err != nil {
-		return nil, row.Err()
-	}
-
-	user, err := r.UserRepository.Get(quiz.Creator.Id)
-	if err != nil {
-		return nil, err
-	}
-	quiz.Creator = *user
-
-	query = goqu.From("questions").Select("id", "question_type").Where(goqu.Ex{
-		"quiz_id": quiz.Id,
-	}).Order(goqu.I("sequence_number").Asc())
-	sql, params, _ = query.ToSQL()
-	rows, err := r.Db.Query(sql, params...)
-	if err != nil {
-		return nil, err
-	}
 	for rows.Next() {
-		var questionId int
-		var questionType string
+		var (
+			quizId                                         int
+			quizName                                       string
+			quizCreationDate                               time.Time
+			creatorId                                      int
+			creatorName, creatorEmail, creatorPasswordHash string
+			timeLimit                                      time.Duration
+			questionType                                   string
+			questionIndex                                  int
+			mcqText                                        string
+			mcqCorrectIndex                                int
+			optionText                                     string
+		)
 
-		err = rows.Scan(&questionId, &questionType)
+		err := rows.Scan(&quizId, &quizName, &quizCreationDate, &creatorId, &creatorName, &creatorEmail, &creatorPasswordHash, &timeLimit, &questionType, &questionIndex, &mcqText, &mcqCorrectIndex, &optionText)
 		if err != nil {
 			return nil, err
 		}
+
+		if creator.Id == 0 {
+			creator.Id = creatorId
+			creator.Name = creatorName
+			creator.Email = creatorEmail
+			creator.PasswordHash = creatorPasswordHash
+		}
+
+		if quiz.Id == 0 {
+			quiz.Id = quizId
+			quiz.Name = quizName
+			quiz.CreationDate = quizCreationDate
+			quiz.Creator = creator
+			quiz.TimeLimit = timeLimit
+		}
+
 		switch questionType {
 		case MultipleChoice:
-			var multipleChoiceQuestionId int
-			var multipleChoiceQuestion MultipleChoiceQuestion
+			var question MultipleChoiceQuestion
 
-			query = goqu.From("multiple_choice_questions").Select("id", "question_text", "correct_answer_index").Where(goqu.Ex{
-				"question_id": questionId,
-			})
-			sql, params, _ = query.ToSQL()
-			row = r.Db.QueryRow(sql, params...)
-			err = row.Scan(&multipleChoiceQuestionId, &multipleChoiceQuestion.QuestionText, &multipleChoiceQuestion.CorrectSelectionIndex)
-			if err != nil {
-				return nil, err
-			}
-
-			query = goqu.From("multiple_choice_options").Select("selection_text").Where(goqu.Ex{
-				"question_id": multipleChoiceQuestionId,
-			}).Order(goqu.I("sequence_number").Asc())
-			sql, params, _ = query.ToSQL()
-			rows, err := r.Db.Query(sql, params...)
-			if err != nil {
-				return nil, err
-			}
-
-			var selection string
-			for rows.Next() {
-				err = rows.Scan(&selection)
-				if err != nil {
-					return nil, err
+			if len(questions)-1 < questionIndex {
+				question = MultipleChoiceQuestion{
+					QuestionText:          mcqText,
+					CorrectSelectionIndex: mcqCorrectIndex,
+					Selections:            []MultipleChoiceSelection{MultipleChoiceSelection(optionText)},
 				}
-				multipleChoiceQuestion.Selections = append(multipleChoiceQuestion.Selections, MultipleChoiceSelection(selection))
+				questions = append(questions, question)
+			} else {
+				question = questions[questionIndex].(MultipleChoiceQuestion)
+				question.Selections = append(question.Selections, MultipleChoiceSelection(optionText))
+				questions[questionIndex] = question
 			}
-
-			quiz.Questions = append(quiz.Questions, multipleChoiceQuestion)
 		}
 	}
 
+	quiz.Questions = questions
+
 	return &quiz, nil
+}
+
+func (r QuizRepository) GetLatestByUser(userId, limit, offset int) ([]Quiz, error) {
+	query := goqu.Dialect("postgres").From(goqu.T("quizzes").As("q")).Prepared(true).Select(
+		goqu.I("q.id"),
+		goqu.I("q.name"),
+		goqu.I("q.creation_date"),
+		goqu.I("u.id"),
+		goqu.I("u.name"),
+		goqu.I("u.email"),
+		goqu.I("u.password_hash"),
+		goqu.I("q.time_limit"),
+		goqu.I("qs.question_type"),
+		goqu.I("qs.sequence_number"),
+		goqu.I("mcq.question_text"),
+		goqu.I("mcq.correct_answer_index"),
+		goqu.I("mco.selection_text"),
+	).Where(goqu.Ex{
+		"q.creator_id": userId,
+	}).Join(
+		goqu.T("users").As("u"), goqu.On(goqu.Ex{"q.creator_id": goqu.I("u.id")}),
+	).Join(
+		goqu.T("questions").As("qs"), goqu.On(goqu.Ex{"q.id": goqu.I("qs.quiz_id")}),
+	).LeftJoin(
+		goqu.T("multiple_choice_questions").As("mcq"), goqu.On(goqu.Ex{"qs.id": goqu.I("mcq.question_id"), "qs.question_type": MultipleChoice}),
+	).LeftJoin(
+		goqu.T("multiple_choice_options").As("mco"), goqu.On(goqu.Ex{"mcq.id": goqu.I("mco.question_id")}),
+	).Order(
+		goqu.I("q.id").Desc(),
+		goqu.I("qs.sequence_number").Asc(),
+		goqu.I("mcq.id").Asc(),
+		goqu.I("mco.sequence_number").Asc(),
+	).Limit(uint(limit)).Offset(uint(offset))
+
+	stmt, params, _ := query.ToSQL()
+	rows, err := r.Db.Query(stmt, params...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var creator User
+	quizzes := []Quiz{}
+
+	for rows.Next() {
+		var (
+			quizID                                         int
+			quizName                                       string
+			quizCreationDate                               time.Time
+			creatorId                                      int
+			creatorName, creatorEmail, creatorPasswordHash string
+			timeLimit                                      time.Duration
+			questionType                                   string
+			questionIndex                                  int
+			mcqText                                        string
+			mcqCorrectIndex                                int
+			optionText                                     string
+		)
+
+		err := rows.Scan(&quizID, &quizName, &quizCreationDate, &creatorId, &creatorName, &creatorEmail, &creatorPasswordHash, &timeLimit, &questionType, &questionIndex, &mcqText, &mcqCorrectIndex, &optionText)
+		if err != nil {
+			return nil, err
+		}
+
+		if creator.Id == 0 {
+			creator.Id = creatorId
+			creator.Name = creatorName
+			creator.Email = creatorEmail
+			creator.PasswordHash = creatorPasswordHash
+		}
+
+		var quiz Quiz
+		var quizIndex int
+		quizExists := false
+		for i, v := range quizzes {
+			if v.Id == quizID {
+				quizExists = true
+				quiz = v
+				quizIndex = i
+				break
+			}
+		}
+		if !quizExists {
+			quiz.Id = quizID
+			quiz.Name = quizName
+			quiz.CreationDate = quizCreationDate
+			quiz.Creator = creator
+			quiz.TimeLimit = timeLimit
+			quiz.Questions = []Question{}
+
+			quizzes = append(quizzes, quiz)
+			quizIndex = len(quizzes) - 1
+		}
+
+		switch questionType {
+		case MultipleChoice:
+			if len(quiz.Questions)-1 < questionIndex {
+				mcq := MultipleChoiceQuestion{
+					QuestionText:          mcqText,
+					CorrectSelectionIndex: mcqCorrectIndex,
+				}
+				mcq.Selections = append(mcq.Selections, MultipleChoiceSelection(optionText))
+				quiz.Questions = append(quiz.Questions, mcq)
+			} else {
+				mcq := quiz.Questions[questionIndex].(MultipleChoiceQuestion)
+				mcq.Selections = append(mcq.Selections, MultipleChoiceSelection(optionText))
+				quiz.Questions[questionIndex] = mcq
+			}
+		}
+		quizzes[quizIndex] = quiz
+	}
+
+	return quizzes, nil
 }
 
 func (r QuizRepository) Add(quiz Quiz) (int, error) {
@@ -106,8 +245,8 @@ func (r QuizRepository) Add(quiz Quiz) (int, error) {
 	query := goqu.Dialect("postgres").Insert("quizzes").Prepared(true).Rows(
 		goqu.Record{"name": quiz.Name, "creator_id": quiz.Creator.Id, "time_limit": quiz.TimeLimit},
 	)
-	sql, params, _ := query.ToSQL()
-	err = tx.QueryRow(sql+" RETURNING id", params...).Scan(&insertId)
+	stmt, params, _ := query.ToSQL()
+	err = tx.QueryRow(stmt+" RETURNING id", params...).Scan(&insertId)
 	if err != nil {
 		tx.Rollback()
 		return 0, err
@@ -119,8 +258,8 @@ func (r QuizRepository) Add(quiz Quiz) (int, error) {
 		query := goqu.Insert("questions").Rows(
 			goqu.Record{"quiz_id": insertId, "question_type": question.GetQuestionType(), "sequence_number": index},
 		)
-		sql, params, _ := query.ToSQL()
-		err = tx.QueryRow(sql+" RETURNING id", params...).Scan(&questionId)
+		stmt, params, _ := query.ToSQL()
+		err = tx.QueryRow(stmt+" RETURNING id", params...).Scan(&questionId)
 		if err != nil {
 			tx.Rollback()
 			return 0, err
@@ -131,8 +270,8 @@ func (r QuizRepository) Add(quiz Quiz) (int, error) {
 			query := goqu.Dialect("postgres").Insert("multiple_choice_questions").Prepared(true).Rows(
 				goqu.Record{"question_id": questionId, "question_text": multipleChoiceQuestion.QuestionText, "correct_answer_index": multipleChoiceQuestion.CorrectSelectionIndex},
 			)
-			sql, params, _ := query.ToSQL()
-			err = tx.QueryRow(sql+" RETURNING id", params...).Scan(&multipleChoiceQuestionId)
+			stmt, params, _ := query.ToSQL()
+			err = tx.QueryRow(stmt+" RETURNING id", params...).Scan(&multipleChoiceQuestionId)
 			if err != nil {
 				tx.Rollback()
 				return 0, err
@@ -142,8 +281,8 @@ func (r QuizRepository) Add(quiz Quiz) (int, error) {
 				query := goqu.Dialect("postgres").Insert("multiple_choice_options").Prepared(true).Rows(
 					goqu.Record{"question_id": multipleChoiceQuestionId, "sequence_number": index, "selection_text": string(option)},
 				)
-				sql, params, _ := query.ToSQL()
-				_, err = tx.Exec(sql, params...)
+				stmt, params, _ := query.ToSQL()
+				_, err = tx.Exec(stmt, params...)
 				if err != nil {
 					tx.Rollback()
 					return 0, err

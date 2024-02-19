@@ -4,7 +4,6 @@ import (
 	"database/sql"
 	"embed"
 	"encoding/gob"
-	"fmt"
 	"log"
 	"net/http"
 	"os"
@@ -74,13 +73,6 @@ func main() {
 		FormDecoder:    form.NewDecoder(),
 		Htmx:           htmx.New(),
 	}
-
-	quiz, err := app.UserQuizResultRepository.Get(1, 1)
-	if err != nil {
-		log.Fatalf("%s", err.Error())
-		return
-	}
-	fmt.Printf("%v\n", quiz)
 
 	log.Printf("Started listening on :8080")
 	log.Fatal(http.ListenAndServe(":8080", app.RegisterHandlers()))

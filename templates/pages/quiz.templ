@@ -9,13 +9,19 @@ import "time"
 
 templ QuizStart(id int, name, creatorName, questionCount string) {
 	@templates.Layout("Quiz") {
-		<div class="w-full flex-1 flex flex-col justify-center items-center">
-			<span class="font-semibold text-2xl">{ name }</span>
-			<span class="text-sm text-gray-400">Created by: { creatorName }</span>
-			<span class="text-sm text-gray-400 mb-3">{ questionCount } questions</span>
-			<form method="post" action={ templ.URL(fmt.Sprintf("/quiz/%d/start", id)) }>
-				<button class="text-white bg-blue-500 hover:bg-blue-600 px-4 py-2 rounded">Start</button>
-			</form>
+		<div class="w-full flex-1 flex justify-center items-center">
+			<div class="mx-4 md:mx-0 w-full max-w-xl flex flex-col items-center rounded-lg border border-gray-300 shadow p-4">
+				<span class="font-semibold text-2xl text-center">{ name }</span>
+				<span class="text-sm text-gray-400">Created by: { creatorName }</span>
+				<span class="text-sm text-gray-400 mb-3">{ questionCount } questions</span>
+				<form class="w-full max-w-xl" method="post" action={ templ.URL(fmt.Sprintf("/quizzes/%d/start", id)) }>
+					<div class="mb-3">
+						<label for="name" class="block mb-1 text-sm font-medium text-gray-900">Your name</label>
+						<input class="w-full p-2 rounded bg-gray-50 border-gray-300" type="text" id="name" name="name"/>
+					</div>
+					<button class="w-full text-white bg-blue-500 hover:bg-blue-600 px-4 py-2 rounded">Start</button>
+				</form>
+			</div>
 		</div>
 	}
 }
@@ -24,7 +30,7 @@ templ QuizNavigationButton(quiz models.Quiz, index int, visibleName, value strin
 	<button
 		name="direction"
 		value={ value }
-		hx-post={ fmt.Sprintf("/quiz/%d", quiz.Id) }
+		hx-post={ fmt.Sprintf("/quizzes/%d", quiz.Id) }
 		hx-indicator="#spinner"
 		hx-select="#question-form"
 		hx-target="#question-form"
@@ -37,7 +43,7 @@ templ QuizNavigationButton(quiz models.Quiz, index int, visibleName, value strin
 }
 
 templ FinishButton(quiz models.Quiz, canFinish bool) {
-	<form id="finish-form" class="w-full" action={ templ.URL(fmt.Sprintf("/quiz/%d/finish", quiz.Id)) } method="post">
+	<form id="finish-form" class="w-full" action={ templ.URL(fmt.Sprintf("/quizzes/%d/finish", quiz.Id)) } method="post">
 		if canFinish {
 			<button class="to-disable w-full text-white bg-blue-500 hover:bg-blue-600 px-4 py-2 rounded">Finish Quiz</button>
 		}
@@ -50,7 +56,7 @@ templ QuizQuestionForm(quiz models.Quiz, index int, question models.Question, re
 		<form
 			id="question"
 			method="post"
-			hx-post={ fmt.Sprintf("/quiz/%d", quiz.Id) }
+			hx-post={ fmt.Sprintf("/quizzes/%d", quiz.Id) }
 			hx-target="#finish-form"
 			hx-select="#finish-form"
 			hx-swap="outerHTML"
@@ -73,7 +79,7 @@ templ QuizQuestionForm(quiz models.Quiz, index int, question models.Question, re
 			</div>
 		</form>
 		@FinishButton(quiz, canFinish)
-		<form id="stop-quiz-form" class="self-start" action={ templ.URL(fmt.Sprintf("/quiz/%d/stop", quiz.Id)) } method="post">
+		<form id="stop-quiz-form" class="self-start" action={ templ.URL(fmt.Sprintf("/quizzes/%d/stop", quiz.Id)) } method="post">
 			<button class="w-full text-red-500">Stop Quiz</button>
 		</form>
 		<div id="spinner" class="htmx-indicator absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 flex items-center bg-white p-4 rounded shadow border border-gray-300 pointer-events-none">

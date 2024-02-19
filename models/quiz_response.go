@@ -4,11 +4,6 @@ type QuizResponse interface {
 	GetResponseType() string
 }
 
-type QuizResponseDTO struct {
-	Type     string
-	Response QuizResponse
-}
-
 type MultipleChoiceResponse struct {
 	SelectionIndex int
 }

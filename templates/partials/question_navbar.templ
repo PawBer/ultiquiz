@@ -15,8 +15,8 @@ templ QuestionNavbar(quizId int, questionCount, currentQuestionIndex int, respon
 		<ul class="flex">
 			for i := 0; i < questionCount; i++ {
 				<form
-					action={ templ.URL(fmt.Sprintf("/quiz/%d/%d", quizId, i)) }
-					hx-post={ fmt.Sprintf("/quiz/%d/%d", quizId, i) }
+					action={ templ.URL(fmt.Sprintf("/quizzes/%d/%d", quizId, i)) }
+					hx-post={ fmt.Sprintf("/quizzes/%d/%d", quizId, i) }
 					hx-indicator="#spinner"
 					hx-select="#question-form"
 					hx-target="#question-form"

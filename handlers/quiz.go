@@ -70,6 +70,7 @@ func (app *Application) GetQuiz(w http.ResponseWriter, r *http.Request) {
 	}
 
 	quiz, err := app.QuizRepository.Get(quizId)
+	fmt.Printf("%v\n", quiz)
 	if err != nil {
 		// if errors.Is(err, primitive.ErrInvalidHex) || errors.Is(err, mongo.ErrNoDocuments) {
 		// 	app.notFound(w)
@@ -91,6 +92,16 @@ func (app *Application) PostQuizStart(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	err = r.ParseForm()
+	if err != nil {
+		app.serverError(w, err)
+		return
+	}
+	formModel := struct {
+		Name string `form:"name"`
+	}{}
+	app.FormDecoder.Decode(&formModel, r.Form)
+
 	quiz, err := app.QuizRepository.Get(quizId)
 	if err != nil {
 		// if errors.Is(err, primitive.ErrInvalidHex) || errors.Is(err, mongo.ErrNoDocuments) {
@@ -105,6 +116,7 @@ func (app *Application) PostQuizStart(w http.ResponseWriter, r *http.Request) {
 	userQuizState := models.UserQuizState{
 		CurrentQuiz:  *quiz,
 		CurrentIndex: 0,
+		Name:         formModel.Name,
 		StartTime:    time.Now().UTC(),
 		Responses:    make([]models.QuizResponse, len(quiz.Questions)),
 	}
@@ -112,7 +124,7 @@ func (app *Application) PostQuizStart(w http.ResponseWriter, r *http.Request) {
 	app.SessionManager.Put(r.Context(), "userQuizState", userQuizState)
 	app.SessionManager.Put(r.Context(), "userInQuiz", true)
 
-	redirectUrl := fmt.Sprintf("/quiz/%d", quizId)
+	redirectUrl := fmt.Sprintf("/quizzes/%d", quizId)
 	http.Redirect(w, r, redirectUrl, http.StatusSeeOther)
 }
 
@@ -147,7 +159,7 @@ func (app *Application) PostQuizQuestionIndex(w http.ResponseWriter, r *http.Req
 	}
 
 	if !app.SessionManager.GetBool(r.Context(), "userInQuiz") {
-		redirectUrl := fmt.Sprintf("/quiz/%d", quizId)
+		redirectUrl := fmt.Sprintf("/quizzes/%d", quizId)
 		http.Redirect(w, r, redirectUrl, http.StatusSeeOther)
 		return
 	}
@@ -156,7 +168,7 @@ func (app *Application) PostQuizQuestionIndex(w http.ResponseWriter, r *http.Req
 	userQuizState.CurrentIndex = questionIndex
 	app.SessionManager.Put(r.Context(), "userQuizState", userQuizState)
 
-	redirectUrl := fmt.Sprintf("/quiz/%d", userQuizState.CurrentQuiz.Id)
+	redirectUrl := fmt.Sprintf("/quizzes/%d", userQuizState.CurrentQuiz.Id)
 	http.Redirect(w, r, redirectUrl, http.StatusSeeOther)
 }
 
@@ -215,7 +227,7 @@ func (app *Application) PostQuizQuestionResponse(w http.ResponseWriter, r *http.
 
 	app.SessionManager.Put(r.Context(), "userQuizState", userQuizState)
 
-	redirectUrl := fmt.Sprintf("/quiz/%d", userQuizState.CurrentQuiz.Id)
+	redirectUrl := fmt.Sprintf("/quizzes/%d", userQuizState.CurrentQuiz.Id)
 	http.Redirect(w, r, redirectUrl, http.StatusSeeOther)
 }
 
@@ -251,18 +263,21 @@ func (app *Application) PostQuizFinish(w http.ResponseWriter, r *http.Request) {
 			Id: userQuizState.CurrentQuiz.Id,
 		},
 		User: models.User{
-			Id: 1,
+			Id: 0,
 		},
-		Responses: userQuizState.Responses,
-		StartTime: userQuizState.StartTime,
+		ParticipantName: userQuizState.Name,
+		Responses:       userQuizState.Responses,
+		StartTime:       userQuizState.StartTime,
+		EndTime:         time.Now().UTC(),
 	}
-	id, err := app.UserQuizResultRepository.Add(userQuizResult)
+	_, err = app.UserQuizResultRepository.Add(userQuizResult)
 	if err != nil {
 		app.serverError(w, err)
 		return
 	}
-	fmt.Printf("%d", id)
+
 	app.SessionManager.Remove(r.Context(), "userQuizState")
 	app.SessionManager.Put(r.Context(), "userInQuiz", false)
+
 	http.Redirect(w, r, "/", http.StatusSeeOther)
 }

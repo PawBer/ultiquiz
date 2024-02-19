@@ -1,0 +1,17 @@
+package pages
+
+import "github.com/PawBer/ultiquiz/models"
+import "strconv"
+
+templ ResultsList(results []models.UserQuizResult) {
+    for _, result := range results {
+        for _, response := range result.Responses {
+            <div>
+            switch response.GetResponseType() {
+            case models.MultipleChoice:
+            <span>{strconv.Itoa(response.(models.MultipleChoiceResponse).SelectionIndex)}</span>
+            }
+            </div>
+        }
+    }
+}
