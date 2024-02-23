@@ -1,17 +1,41 @@
 package pages
 
 import "github.com/PawBer/ultiquiz/models"
+import "github.com/PawBer/ultiquiz/templates"
+import "fmt"
 import "strconv"
 
+script UpdateBars() {
+	const bars = document.querySelectorAll('.answer-bar');
+	for (const bar of bars) {
+		const correct = parseInt(bar.dataset.correct);
+		const all = parseInt(bar.dataset.all);
+		setTimeout(() => {
+			bar.style.width = `${Math.round(correct*100/all)}%`;
+		}, 100)
+	}
+}
+
 templ ResultsList(results []models.UserQuizResult) {
-    for _, result := range results {
-        for _, response := range result.Responses {
-            <div>
-            switch response.GetResponseType() {
-            case models.MultipleChoice:
-            <span>{strconv.Itoa(response.(models.MultipleChoiceResponse).SelectionIndex)}</span>
-            }
-            </div>
-        }
-    }
+	@templates.Layout("Quiz Results") {
+		<div class="max-w-xl w-full flex flex-col items-center justify-center p-4 md:p-0 mb-4">
+			<h1 class="text-3xl font-semibold mb-4">Your Quiz Results</h1>
+			<div class="flex flex-col gap-3 w-full">
+				for _, result := range results {
+					<div class="flex flex-col w-full border border-gray-300 shadow rounded-xl p-4">
+						<span class="block font-semibold">{ result.Quiz.Name }</span>
+						<span data-timestamp={result.EndTime.Format("2006-01-02T15:04:05.999Z07:00")} class="timestamp block text-gray-600 font-medium text-sm">{ result.EndTime.Format("2006-01-02T15:04:05.999Z07:00") }</span>
+						<div class="flex gap-2 items-center">
+							<div class="w-full bg-gray-200 rounded-full h-2.5 dark:bg-gray-700">
+								<div data-correct={strconv.Itoa(result.GetCorrectAnswerCount())} data-all={strconv.Itoa(len(result.Responses))} style="width: 0; transition: width 1s;" class="answer-bar bg-green-500 h-2.5 rounded-full"></div>
+							</div>
+							<span class="text-sm font-medium">{ strconv.Itoa(result.GetCorrectAnswerCount()) }/{ strconv.Itoa(len(result.Responses)) }</span>
+						</div>
+						<a class="w-fit text-white bg-blue-500 hover:bg-blue-600 px-3 py-1.5 rounded text-sm" href={ templ.URL(fmt.Sprintf("/results/%d", result.Id)) }>View</a>
+					</div>
+				}
+				@UpdateBars()
+			</div>
+		</div>
+	}
 }

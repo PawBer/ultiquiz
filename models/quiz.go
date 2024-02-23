@@ -121,6 +121,115 @@ func (r QuizRepository) Get(id int) (*Quiz, error) {
 	return &quiz, nil
 }
 
+func (r QuizRepository) PopulateQuizzesInResults(results []UserQuizResult) ([]UserQuizResult, error) {
+	quizIds := []int{}
+	for _, result := range results {
+		quizIds = append(quizIds, result.Quiz.Id)
+	}
+
+	query := goqu.Dialect("postgres").From(goqu.T("quizzes").As("q")).Prepared(true).Select(
+		goqu.I("q.id"),
+		goqu.I("q.name"),
+		goqu.I("q.creation_date"),
+		goqu.I("u.id"),
+		goqu.I("u.name"),
+		goqu.I("u.email"),
+		goqu.I("u.password_hash"),
+		goqu.I("q.time_limit"),
+		goqu.I("qs.question_type"),
+		goqu.I("qs.sequence_number"),
+		goqu.I("mcq.question_text"),
+		goqu.I("mcq.correct_answer_index"),
+		goqu.I("mco.selection_text"),
+	).Where(goqu.Ex{
+		"q.id": quizIds,
+	}).Join(
+		goqu.T("users").As("u"), goqu.On(goqu.Ex{"q.creator_id": goqu.I("u.id")}),
+	).Join(
+		goqu.T("questions").As("qs"), goqu.On(goqu.Ex{"q.id": goqu.I("qs.quiz_id")}),
+	).LeftJoin(
+		goqu.T("multiple_choice_questions").As("mcq"), goqu.On(goqu.Ex{"qs.id": goqu.I("mcq.question_id"), "qs.question_type": MultipleChoice}),
+	).LeftJoin(
+		goqu.T("multiple_choice_options").As("mco"), goqu.On(goqu.Ex{"mcq.id": goqu.I("mco.question_id")}),
+	).Order(
+		goqu.I("q.id").Desc(),
+		goqu.I("qs.sequence_number").Asc(),
+		goqu.I("mcq.id").Asc(),
+		goqu.I("mco.sequence_number").Asc(),
+	)
+
+	stmt, params, _ := query.ToSQL()
+	rows, err := r.Db.Query(stmt, params...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	quizzes := make(map[int]Quiz)
+
+	for rows.Next() {
+		var (
+			quizId                                         int
+			quizName                                       string
+			quizCreationDate                               time.Time
+			creatorId                                      int
+			creatorName, creatorEmail, creatorPasswordHash string
+			timeLimit                                      time.Duration
+			questionType                                   string
+			questionIndex                                  int
+			mcqText                                        string
+			mcqCorrectIndex                                int
+			optionText                                     string
+		)
+
+		err := rows.Scan(&quizId, &quizName, &quizCreationDate, &creatorId, &creatorName, &creatorEmail, &creatorPasswordHash, &timeLimit, &questionType, &questionIndex, &mcqText, &mcqCorrectIndex, &optionText)
+		if err != nil {
+			return nil, err
+		}
+
+		quiz, exists := quizzes[quizId]
+		if !exists {
+			quiz = Quiz{
+				Id:   quizId,
+				Name: quizName,
+				Creator: User{
+					Id:           creatorId,
+					Name:         creatorName,
+					Email:        creatorEmail,
+					PasswordHash: creatorPasswordHash,
+				},
+				CreationDate: quizCreationDate,
+				TimeLimit:    timeLimit,
+				Questions:    []Question{},
+			}
+		}
+
+		switch questionType {
+		case MultipleChoice:
+			if len(quiz.Questions)-1 < questionIndex {
+				mcq := MultipleChoiceQuestion{
+					QuestionText:          mcqText,
+					CorrectSelectionIndex: mcqCorrectIndex,
+				}
+				mcq.Selections = append(mcq.Selections, MultipleChoiceSelection(optionText))
+				quiz.Questions = append(quiz.Questions, mcq)
+			} else {
+				mcq := quiz.Questions[questionIndex].(MultipleChoiceQuestion)
+				mcq.Selections = append(mcq.Selections, MultipleChoiceSelection(optionText))
+				quiz.Questions[questionIndex] = mcq
+			}
+		}
+		quizzes[quizId] = quiz
+	}
+
+	for i := 0; i < len(results); i++ {
+		quizId := results[i].Quiz.Id
+		results[i].Quiz = quizzes[quizId]
+	}
+
+	return results, nil
+}
+
 func (r QuizRepository) GetLatestByUser(userId, limit, offset int) ([]Quiz, error) {
 	query := goqu.Dialect("postgres").From(goqu.T("quizzes").As("q")).Prepared(true).Select(
 		goqu.I("q.id"),
@@ -165,7 +274,7 @@ func (r QuizRepository) GetLatestByUser(userId, limit, offset int) ([]Quiz, erro
 
 	for rows.Next() {
 		var (
-			quizID                                         int
+			quizId                                         int
 			quizName                                       string
 			quizCreationDate                               time.Time
 			creatorId                                      int
@@ -178,7 +287,7 @@ func (r QuizRepository) GetLatestByUser(userId, limit, offset int) ([]Quiz, erro
 			optionText                                     string
 		)
 
-		err := rows.Scan(&quizID, &quizName, &quizCreationDate, &creatorId, &creatorName, &creatorEmail, &creatorPasswordHash, &timeLimit, &questionType, &questionIndex, &mcqText, &mcqCorrectIndex, &optionText)
+		err := rows.Scan(&quizId, &quizName, &quizCreationDate, &creatorId, &creatorName, &creatorEmail, &creatorPasswordHash, &timeLimit, &questionType, &questionIndex, &mcqText, &mcqCorrectIndex, &optionText)
 		if err != nil {
 			return nil, err
 		}
@@ -194,7 +303,7 @@ func (r QuizRepository) GetLatestByUser(userId, limit, offset int) ([]Quiz, erro
 		var quizIndex int
 		quizExists := false
 		for i, v := range quizzes {
-			if v.Id == quizID {
+			if v.Id == quizId {
 				quizExists = true
 				quiz = v
 				quizIndex = i
@@ -202,7 +311,7 @@ func (r QuizRepository) GetLatestByUser(userId, limit, offset int) ([]Quiz, erro
 			}
 		}
 		if !quizExists {
-			quiz.Id = quizID
+			quiz.Id = quizId
 			quiz.Name = quizName
 			quiz.CreationDate = quizCreationDate
 			quiz.Creator = creator

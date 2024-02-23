@@ -1,0 +1,55 @@
+package pages
+
+import "github.com/PawBer/ultiquiz/models"
+import "github.com/PawBer/ultiquiz/templates"
+import "strconv"
+import "time"
+
+templ Result(result models.UserQuizResult) {
+	@templates.Layout("Result") {
+		<div class="max-w-xl w-full flex flex-col items-center p-4 md:p-0 mb-4">
+			<h1 class="text-3xl font-semibold text-center">Results for { result.Quiz.Name }</h1>
+			<span class="block text-sm text-gray-600 mb-2">Finished: <span data-timestamp={result.EndTime.Format("2006-01-02T15:04:05.999Z07:00")} class="timestamp">{ result.EndTime.Format("2006-01-02T15:04:05.999Z07:00") }</span></span>
+			<h2 class="text-xl font-semibold mb-2">Total score: { strconv.Itoa(result.GetCorrectAnswerCount()) }/{ strconv.Itoa(len(result.Responses)) }</h2>
+			<div class="w-full flex gap-2 items-center mb-2">
+				<div class="w-full bg-gray-200 rounded-full h-2.5 dark:bg-gray-700">
+					<div data-correct={ strconv.Itoa(result.GetCorrectAnswerCount()) } data-all={ strconv.Itoa(len(result.Responses)) } style="width: 0; transition: width 1s;" class="answer-bar bg-green-500 h-2.5 rounded-full"></div>
+				</div>
+				<span class="text-sm font-medium">{ strconv.Itoa(result.GetCorrectAnswerCount() * 100 / len(result.Responses)) }% </span>
+			</div>
+            <h2 class="text-xl font-semibold mb-2">Time taken: <span class={templ.KV("text-green-500", result.EndTime.Sub(result.StartTime) < result.Quiz.TimeLimit), templ.KV("text-red-500", result.EndTime.Sub(result.StartTime) > result.Quiz.TimeLimit)}>{result.EndTime.Sub(result.StartTime).Round(time.Second).String()}</span></h2>
+			<h2 class="text-xl font-semibold mb-2">Question Summary</h2>
+			<div class="w-full flex flex-col gap-3">
+				for index, question := range result.Quiz.Questions {
+					switch question.GetQuestionType() {
+						case models.MultipleChoice:
+							@MultipleChoiceResult(question.(models.MultipleChoiceQuestion), result.Responses[index].(models.MultipleChoiceResponse))
+					}
+				}
+			</div>
+		</div>
+		@UpdateBars()
+	}
+}
+
+templ MultipleChoiceResult(question models.MultipleChoiceQuestion, response models.MultipleChoiceResponse) {
+	<div class={ "w-full flex flex-col border shadow p-4 rounded-xl", templ.KV("border-green-500", question.CorrectSelectionIndex == response.SelectionIndex), templ.KV("border-red-500", question.CorrectSelectionIndex != response.SelectionIndex) }>
+		<span class="mb-2">{ question.QuestionText }</span>
+		<div class="flex flex-col gap-2">
+			for index, selection := range question.Selections {
+				<div class={ "flex p-2 rounded border", templ.KV("border-2", index == response.SelectionIndex), templ.KV("border-green-500", question.CorrectSelectionIndex == index), templ.KV("border-red-500", question.CorrectSelectionIndex != response.SelectionIndex && index == response.SelectionIndex) }>
+					<span>{ string(selection) }</span>
+					if question.CorrectSelectionIndex == index {
+						<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="ml-auto w-6 h-6 text-green-500">
+							<path stroke-linecap="round" stroke-linejoin="round" d="m4.5 12.75 6 6 9-13.5"></path>
+						</svg>
+					} else if question.CorrectSelectionIndex != response.SelectionIndex && index == response.SelectionIndex {
+						<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="ml-auto w-6 h-6 text-red-500">
+							<path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12"></path>
+						</svg>
+					}
+				</div>
+			}
+		</div>
+	</div>
+}

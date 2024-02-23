@@ -7,13 +7,14 @@ import "strconv"
 import "fmt"
 import "time"
 
-templ QuizStart(id int, name, creatorName, questionCount string) {
+templ QuizStart(id int, name, creatorName, questionCount string, timeLimit time.Duration) {
 	@templates.Layout("Quiz") {
 		<div class="w-full flex-1 flex justify-center items-center">
 			<div class="mx-4 md:mx-0 w-full max-w-xl flex flex-col items-center rounded-lg border border-gray-300 shadow p-4">
 				<span class="font-semibold text-2xl text-center">{ name }</span>
 				<span class="text-sm text-gray-400">Created by: { creatorName }</span>
-				<span class="text-sm text-gray-400 mb-3">{ questionCount } questions</span>
+				<span class="text-sm text-gray-400">{ questionCount } questions</span>
+				<span class="text-sm text-gray-400 mb-3">Time limit: {timeLimit.Round(time.Second).String()}</span>
 				<form class="w-full max-w-xl" method="post" action={ templ.URL(fmt.Sprintf("/quizzes/%d/start", id)) }>
 					<div class="mb-3">
 						<label for="name" class="block mb-1 text-sm font-medium text-gray-900">Your name</label>

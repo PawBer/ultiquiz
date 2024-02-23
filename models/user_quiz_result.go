@@ -17,6 +17,23 @@ type UserQuizResult struct {
 	EndTime         time.Time
 }
 
+func (u UserQuizResult) GetCorrectAnswerCount() int {
+	counter := 0
+
+	for index, question := range u.Quiz.Questions {
+		switch question.GetQuestionType() {
+		case MultipleChoice:
+			correctIndex := question.(MultipleChoiceQuestion).CorrectSelectionIndex
+			selectedIndex := u.Responses[index].(MultipleChoiceResponse).SelectionIndex
+			if correctIndex == selectedIndex {
+				counter++
+			}
+		}
+	}
+
+	return counter
+}
+
 type UserQuizResultRepository struct {
 	Db             *sql.DB
 	UserRepository *UserRepository
@@ -39,7 +56,7 @@ func (r UserQuizResultRepository) Get(resultId int) (*UserQuizResult, error) {
 		goqu.I("mcs.index"),
 	).Where(goqu.Ex{
 		"qr.id": resultId,
-	}).Join(
+	}).LeftJoin(
 		goqu.T("users").As("u"), goqu.On(goqu.Ex{"qr.user_id": goqu.I("u.id")}),
 	).Join(
 		goqu.T("selections").As("s"), goqu.On(goqu.Ex{"qr.id": goqu.I("s.result_id")}),
@@ -66,8 +83,8 @@ func (r UserQuizResultRepository) Get(resultId int) (*UserQuizResult, error) {
 			quizId                    int
 			startTime, endTime        time.Time
 			participantName           string
-			userId                    int
-			name, email, passwordHash string
+			userId                    sql.NullInt32
+			name, email, passwordHash sql.NullString
 			responseType              string
 			sequence_number           int
 			mcsIndex                  int
@@ -78,12 +95,12 @@ func (r UserQuizResultRepository) Get(resultId int) (*UserQuizResult, error) {
 			return nil, err
 		}
 
-		if user.Id == 0 {
+		if user.Id == 0 && userId.Valid {
 			user = User{
-				Id:           userId,
-				Name:         name,
-				Email:        email,
-				PasswordHash: passwordHash,
+				Id:           int(userId.Int32),
+				Name:         name.String,
+				Email:        email.String,
+				PasswordHash: passwordHash.String,
 			}
 		}
 		if result.Id == 0 {
@@ -121,6 +138,7 @@ func (r UserQuizResultRepository) GetLatestByUserAndQuiz(quizId, userId, limit, 
 
 	query := goqu.Dialect("postgres").From(goqu.T("quiz_results").As("qr")).Prepared(true).Select(
 		goqu.I("qr.id"),
+		goqu.I("qr.quiz_id"),
 		goqu.I("qr.start_time"),
 		goqu.I("qr.end_time"),
 		goqu.I("qr.participant_name"),
@@ -157,6 +175,7 @@ func (r UserQuizResultRepository) GetLatestByUserAndQuiz(quizId, userId, limit, 
 	for rows.Next() {
 		var (
 			resultId                  int
+			quizId                    int
 			startTime, endTime        time.Time
 			participantName           string
 			userId                    sql.NullInt32
@@ -166,7 +185,7 @@ func (r UserQuizResultRepository) GetLatestByUserAndQuiz(quizId, userId, limit, 
 			mcsIndex                  int
 		)
 
-		err := rows.Scan(&resultId, &startTime, &endTime, &participantName, &userId, &name, &email, &passwordHash, &responseType, &sequence_number, &mcsIndex)
+		err := rows.Scan(&resultId, &quizId, &startTime, &endTime, &participantName, &userId, &name, &email, &passwordHash, &responseType, &sequence_number, &mcsIndex)
 		if err != nil {
 			return nil, err
 		}

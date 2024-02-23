@@ -81,7 +81,7 @@ func (app *Application) GetQuiz(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	component := pages.QuizStart(quiz.Id, quiz.Name, quiz.Creator.Name, strconv.Itoa(len(quiz.Questions)))
+	component := pages.QuizStart(quiz.Id, quiz.Name, quiz.Creator.Name, strconv.Itoa(len(quiz.Questions)), quiz.TimeLimit)
 	component.Render(r.Context(), w)
 }
 
